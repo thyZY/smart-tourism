@@ -2,6 +2,24 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import psycopg2
+from dotenv import load_dotenv
+
+load_dotenv()
+
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = os.getenv("DB_PORT")
+DB_NAME = os.getenv("DB_NAME")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+
+def get_db_connection():
+    return psycopg2.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        dbname=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
 
 app = FastAPI()
 app.add_middleware(
@@ -24,44 +42,42 @@ def health_check():
 
 @app.get("/api/places")
 def get_places():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT
+            id,
+            name,
+            category,
+            ST_X(geom) AS lng,
+            ST_Y(geom) AS lat
+        FROM places
+        ORDER BY id;
+    """)
+
+    rows = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    features = []
+
+    for row in rows:
+        features.append({
+            "type": "Feature",
+            "properties": {
+                "id": row[0],
+                "name": row[1],
+                "category": row[2]
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [row[3], row[4]]
+            }
+        })
+
     return {
         "type": "FeatureCollection",
-        "features": [
-            {
-                "type": "Feature",
-                "properties": {
-                    "id": 1,
-                    "name": "南京博物院",
-                    "category": "博物馆"
-                },
-                "geometry": {
-                    "type": "Point",
-                    "coordinates": [118.7921, 32.0407]
-                }
-            },
-            {
-                "type": "Feature",
-                "properties": {
-                    "id": 2,
-                    "name": "夫子庙",
-                    "category": "历史文化"
-                },
-                "geometry": {
-                    "type": "Point",
-                    "coordinates": [118.7877, 32.0270]
-                }
-            },
-            {
-                "type": "Feature",
-                "properties": {
-                    "id": 3,
-                    "name": "中山陵",
-                    "category": "陵园景区"
-                },
-                "geometry": {
-                    "type": "Point",
-                    "coordinates": [118.8487, 32.0593]
-                }
-            }
-        ]
+        "features": features
     }
