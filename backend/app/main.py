@@ -41,20 +41,34 @@ def health_check():
     }
 
 @app.get("/api/places")
-def get_places():
+def get_places(q: str | None = None):
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT
-            id,
-            name,
-            category,
-            ST_X(geom) AS lng,
-            ST_Y(geom) AS lat
-        FROM places
-        ORDER BY id;
-    """)
+    if q:
+        cursor.execute("""
+            SELECT
+                id,
+                name,
+                category,
+                ST_X(geom) AS lng,
+                ST_Y(geom) AS lat
+            FROM places
+            WHERE name ILIKE %s
+            OR category ILIKE %s
+            ORDER BY id;
+        """, (f"%{q}%", f"%{q}%"))
+    else:
+        cursor.execute("""
+            SELECT
+                id,
+                name,
+                category,
+                ST_X(geom) AS lng,
+                ST_Y(geom) AS lat
+            FROM places
+            ORDER BY id;
+        """)
 
     rows = cursor.fetchall()
 

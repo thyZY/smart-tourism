@@ -7,8 +7,25 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 
 setWorkerUrl(workerUrl)
 const mapContainer = ref(null)
+const searchQuery = ref('')
 
 let map = null
+
+const searchPlaces = async () => {
+  if (!map) return
+
+  const q = searchQuery.value.trim()
+
+  const response = await axios.get('http://127.0.0.1:8010/api/places', {
+    params: q ? { q } : {}
+  })
+
+  const source = map.getSource('places')
+
+  if (source) {
+    source.setData(response.data)
+  }
+}
 
 onMounted(() => {
   map = new Map({
@@ -90,7 +107,17 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="mapContainer" class="map"></div>
+  <div class="map-wrapper">
+    <input
+      v-model="searchQuery"
+      class="search-box"
+      type="text"
+      placeholder="搜索景点..."
+      @keyup.enter="searchPlaces"
+    />
+
+    <div ref="mapContainer" class="map"></div>
+  </div>
 </template>
 
 <style>
@@ -109,5 +136,32 @@ body {
 .map {
   width: 100vw;
   height: 100vh;
+}
+
+.map-wrapper {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+}
+
+.search-box {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  z-index: 10;
+
+  width: 260px;
+  padding: 10px 14px;
+
+  font-size: 16px;
+  color: #222;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: white;
+  outline: none;
+}
+
+.search-box::placeholder {
+  color: #777;
 }
 </style>
