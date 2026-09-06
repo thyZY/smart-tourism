@@ -8,8 +8,10 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 setWorkerUrl(workerUrl)
 const mapContainer = ref(null)
 const searchQuery = ref('')
+const searchMessage = ref('')
 
 let map = null
+let searchPopup = null
 
 const searchPlaces = async () => {
   if (!map) return
@@ -24,6 +26,51 @@ const searchPlaces = async () => {
 
   if (source) {
     source.setData(response.data)
+  }
+
+  const features = response.data.features
+
+  if (features.length === 0) {
+    searchMessage.value = '未找到相关景点'
+  } else {
+    searchMessage.value = ''
+  }
+  if (features.length === 0 && searchPopup) {
+    searchPopup.remove()
+    searchPopup = null
+  }
+
+  if (!q) {
+    if (searchPopup) {
+      searchPopup.remove()
+      searchPopup = null
+    }
+
+    map.flyTo({
+      center: [118.7969, 32.0603],
+      zoom: 10
+    })
+  }
+
+  if (features.length === 1) {
+    if (searchPopup) {
+      searchPopup.remove()
+      searchPopup = null
+    }
+
+    map.flyTo({
+      center: features[0].geometry.coordinates,
+      zoom: 14
+    })
+
+    const feature = features[0]
+
+    searchPopup = new Popup()
+      .setLngLat(feature.geometry.coordinates)
+      .setHTML(
+        `<strong>${feature.properties.name}</strong><br>${feature.properties.category}`
+      )
+      .addTo(map)
   }
 }
 
@@ -116,6 +163,10 @@ onBeforeUnmount(() => {
       @keyup.enter="searchPlaces"
     />
 
+  <div v-if="searchMessage" class="search-message">
+    {{ searchMessage }}
+  </div>
+
     <div ref="mapContainer" class="map"></div>
   </div>
 </template>
@@ -164,4 +215,22 @@ body {
 .search-box::placeholder {
   color: #777;
 }
+
+.search-message {
+  position: absolute;
+  top: 70px;
+  left: 20px;
+  z-index: 10;
+
+  width: 260px;
+  padding: 8px 14px;
+
+  font-size: 14px;
+  color: #b42318;
+  background: white;
+  border: 1px solid #f0b8b8;
+  border-radius: 6px;
+}
+
 </style>
+
