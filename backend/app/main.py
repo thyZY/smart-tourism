@@ -51,6 +51,7 @@ def get_places(q: str | None = None):
                 id,
                 name,
                 category,
+                address,
                 ST_X(geom) AS lng,
                 ST_Y(geom) AS lat
             FROM places
@@ -64,6 +65,7 @@ def get_places(q: str | None = None):
                 id,
                 name,
                 category,
+                address,
                 ST_X(geom) AS lng,
                 ST_Y(geom) AS lat
             FROM places
@@ -83,11 +85,12 @@ def get_places(q: str | None = None):
             "properties": {
                 "id": row[0],
                 "name": row[1],
-                "category": row[2]
+                "category": row[2],
+                "address": row[3]
             },
             "geometry": {
                 "type": "Point",
-                "coordinates": [row[3], row[4]]
+                "coordinates": [row[4], row[5]]
             }
         })
 

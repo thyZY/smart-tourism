@@ -68,7 +68,9 @@ const searchPlaces = async () => {
     searchPopup = new Popup()
       .setLngLat(feature.geometry.coordinates)
       .setHTML(
-        `<strong>${feature.properties.name}</strong><br>${feature.properties.category}`
+        `<strong>${feature.properties.name}</strong><br>
+        ${feature.properties.category}<br>
+        地址：${feature.properties.address}`
       )
       .addTo(map)
   }
@@ -133,7 +135,9 @@ onMounted(() => {
           new Popup()
             .setLngLat(feature.geometry.coordinates)
             .setHTML(
-              `<strong>${feature.properties.name}</strong><br>${feature.properties.category}`
+              `<strong>${feature.properties.name}</strong><br>
+              ${feature.properties.category}<br>
+              地址：${feature.properties.address}`
             )
             .addTo(map)
         })
