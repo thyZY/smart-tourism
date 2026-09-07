@@ -98,3 +98,61 @@ def get_places(q: str | None = None):
         "type": "FeatureCollection",
         "features": features
     }
+
+@app.get("/api/places/nearby")
+def get_nearby_places(
+    lng: float,
+    lat: float,
+    radius: float = 5000
+):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT
+            id,
+            name,
+            category,
+            address,
+            ST_X(geom) AS lng,
+            ST_Y(geom) AS lat,
+            ST_Distance(
+                geom::geography,
+                ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography
+            ) AS distance_m
+        FROM places
+        WHERE ST_DWithin(
+            geom::geography,
+            ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography,
+            %s
+        )
+        ORDER BY distance_m;
+    """, (lng, lat, lng, lat, radius))
+
+    rows = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    features = []
+
+    for row in rows:
+        features.append({
+            "type": "Feature",
+            "properties": {
+                "id": row[0],
+                "name": row[1],
+                "category": row[2],
+                "address": row[3],
+                "distance_km": round(row[6] / 1000, 2)
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [row[4], row[5]]
+            }
+        })
+
+    return {
+        "type": "FeatureCollection",
+        "features": features
+    }
