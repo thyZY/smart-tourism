@@ -41,36 +41,44 @@ def health_check():
     }
 
 @app.get("/api/places")
-def get_places(q: str | None = None):
+def get_places(
+    q: str | None = None,
+    category: str | None = None
+):
     conn = get_db_connection()
     cursor = conn.cursor()
 
+    q = q.strip() if q else None
+    category = category.strip() if category else None
+
+    conditions = []
+    params = []
+
     if q:
-        cursor.execute("""
-            SELECT
-                id,
-                name,
-                category,
-                address,
-                ST_X(geom) AS lng,
-                ST_Y(geom) AS lat
-            FROM places
-            WHERE name ILIKE %s
-            OR category ILIKE %s
-            ORDER BY id;
-        """, (f"%{q}%", f"%{q}%"))
-    else:
-        cursor.execute("""
-            SELECT
-                id,
-                name,
-                category,
-                address,
-                ST_X(geom) AS lng,
-                ST_Y(geom) AS lat
-            FROM places
-            ORDER BY id;
-        """)
+        conditions.append("(name ILIKE %s OR category ILIKE %s)")
+        params.extend([f"%{q}%", f"%{q}%"])
+
+    if category:
+        conditions.append("category = %s")
+        params.append(category)
+
+    sql = """
+        SELECT
+            id,
+            name,
+            category,
+            address,
+            ST_X(geom) AS lng,
+            ST_Y(geom) AS lat
+        FROM places
+    """
+
+    if conditions:
+        sql += " WHERE " + " AND ".join(conditions)
+
+    sql += " ORDER BY id;"
+
+    cursor.execute(sql, params)
 
     rows = cursor.fetchall()
 
@@ -103,12 +111,15 @@ def get_places(q: str | None = None):
 def get_nearby_places(
     lng: float,
     lat: float,
-    radius: float = 5000
+    radius: float = 5000,
+    category: str | None = None
 ):
+    category = category.strip() if category else None
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
+    sql = """
         SELECT
             id,
             name,
@@ -126,8 +137,17 @@ def get_nearby_places(
             ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography,
             %s
         )
-        ORDER BY distance_m;
-    """, (lng, lat, lng, lat, radius))
+    """
+
+    params = [lng, lat, lng, lat, radius]
+
+    if category:
+        sql += " AND category = %s"
+        params.append(category)
+
+    sql += " ORDER BY distance_m;"
+
+    cursor.execute(sql, params)
 
     rows = cursor.fetchall()
 
