@@ -18,7 +18,7 @@ const map = {
 }
 const context = vm.createContext({
   ref: value => ({ value }), onMounted: fn => { mounted = fn },
-  onBeforeUnmount: fn => { unmounted = fn },
+  onUnmounted: fn => { unmounted = fn },
   Map: function () { return map }, NavigationControl: function () {},
   setWorkerUrl() {}, workerUrl: '', AbortController,
   axios: {
