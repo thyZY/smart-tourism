@@ -9,12 +9,19 @@ const script = readFileSync(new URL('../frontend/src/App.vue', import.meta.url),
 const requests = []
 let mounted, unmounted, load
 const source = { data: null, setData(data) { this.data = data } }
+const bounds = {
+  getWest: () => 118.785,
+  getSouth: () => 32.025,
+  getEast: () => 118.800,
+  getNorth: () => 32.050
+}
 const map = {
   addControl() {}, once(event, fn) { load = fn },
   addSource(id, config) { source.data = config.data }, addLayer() {}, on() {},
-  getSource() { return source }, stop() {},
+  getSource() { return source }, stop() {}, getBounds() { this.boundsCalls++; return bounds },
   getCenter() { return { lng: 118.7921, lat: 32.0407 } },
-  flyTo() {}, fitBounds() {}, remove() { this.removed = true }
+  flyTo() { this.flyToCalls++ }, fitBounds() { this.fitBoundsCalls++ }, remove() { this.removed = true },
+  boundsCalls: 0, flyToCalls: 0, fitBoundsCalls: 0
 }
 const context = vm.createContext({
   ref: value => ({ value }), onMounted: fn => { mounted = fn },
@@ -26,7 +33,7 @@ const context = vm.createContext({
     get: (url, options) => new Promise((resolve, reject) => requests.push({ url, options, resolve, reject }))
   }
 })
-vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, loading, searchMessage, searchQuery };', context)
+vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, loading, searchMessage, searchQuery, selectedCategory };', context)
 const api = context.api
 const empty = { type: 'FeatureCollection', features: [] }
 const tick = () => new Promise(resolve => setImmediate(resolve))
@@ -61,6 +68,32 @@ const ordinary = api.searchPlaces()
 requests.at(-1).resolve({ data: empty })
 await ordinary
 assert.equal(api.searchMessage.value, '未找到相关景点')
+api.searchQuery.value = '夫子'
+api.selectedCategory.value = '历史文化'
+const flyToCallsBeforeCurrentArea = map.flyToCalls
+const fitBoundsCallsBeforeCurrentArea = map.fitBoundsCalls
+const currentArea = api.searchCurrentArea()
+const currentAreaRequest = requests.at(-1)
+assert.equal(map.boundsCalls, 1, 'current-area search reads map bounds once')
+assert.equal(currentAreaRequest.options.params.min_lng, 118.785)
+assert.equal(currentAreaRequest.options.params.min_lat, 32.025)
+assert.equal(currentAreaRequest.options.params.max_lng, 118.800)
+assert.equal(currentAreaRequest.options.params.max_lat, 32.050)
+assert.equal(currentAreaRequest.options.params.q, '夫子')
+assert.equal(currentAreaRequest.options.params.category, '历史文化')
+const currentAreaData = {
+  type: 'FeatureCollection',
+  features: [{
+    type: 'Feature',
+    properties: { id: 2, name: '夫子庙', category: '历史文化', address: '贡院街' },
+    geometry: { type: 'Point', coordinates: [118.7877, 32.0270] }
+  }]
+}
+currentAreaRequest.resolve({ data: currentAreaData })
+await currentArea
+assert.equal(source.data, currentAreaData, 'current-area search updates the GeoJSON source')
+assert.equal(map.flyToCalls, flyToCallsBeforeCurrentArea, 'current-area search does not call overview or flyTo')
+assert.equal(map.fitBoundsCalls, fitBoundsCallsBeforeCurrentArea, 'current-area search does not frame results')
 const pending = api.searchPlaces()
 const last = requests.at(-1)
 const previous = source.data
@@ -70,4 +103,4 @@ last.resolve({ data: { type: 'FeatureCollection', features: ['stale'] } })
 await pending
 assert.equal(source.data, previous, 'late response does not update removed map')
 assert.equal(map.removed, true)
-console.log('PASS: initialization lock, duplicate suppression, all three network failure paths, recovery, empty nearby, unmount cancellation')
+console.log('PASS: initialization lock, duplicate suppression, failure paths, current-area bounds/query behavior, and unmount cancellation')

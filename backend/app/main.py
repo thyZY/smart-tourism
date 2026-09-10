@@ -43,7 +43,11 @@ def health_check():
 @app.get("/api/places")
 def get_places(
     q: str | None = None,
-    category: str | None = None
+    category: str | None = None,
+    min_lng: float | None = None,
+    min_lat: float | None = None,
+    max_lng: float | None = None,
+    max_lat: float | None = None
 ):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -61,6 +65,15 @@ def get_places(
     if category:
         conditions.append("category = %s")
         params.append(category)
+
+    if all(value is not None for value in [min_lng, min_lat, max_lng, max_lat]):
+        conditions.append("""
+            ST_Within(
+                geom,
+                ST_MakeEnvelope(%s, %s, %s, %s, 4326)
+            )
+        """)
+        params.extend([min_lng, min_lat, max_lng, max_lat])
 
     sql = """
         SELECT

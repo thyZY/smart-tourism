@@ -117,16 +117,21 @@ const frameResults = (features) => {
 }
 
 // All three request paths share one lock; the source exists before any request starts.
-const loadPlaces = async (nearby = false) => {
+const loadPlaces = async (nearby = false, currentArea = false) => {
   if (!mapReady.value || loading.value) return
+
   loading.value = true
   clearPopup()
   searchMessage.value = ''
   map.stop()
+
   const q = searchQuery.value.trim()
   const center = map.getCenter()
+  const bounds = currentArea ? map.getBounds() : null
+
   const controller = new AbortController()
   requestController = controller
+
   try {
     const response = await axios.get(
       `http://127.0.0.1:8010/api/places${nearby ? '/nearby' : ''}`,
@@ -140,37 +145,66 @@ const loadPlaces = async (nearby = false) => {
                 ? { category: selectedCategory.value }
                 : {})
             }
-          : {
-              ...(q ? { q } : {}),
-              ...(selectedCategory.value
-                ? { category: selectedCategory.value }
-                : {})
-            },
+          : currentArea
+            ? {
+                min_lng: bounds.getWest(),
+                min_lat: bounds.getSouth(),
+                max_lng: bounds.getEast(),
+                max_lat: bounds.getNorth(),
+                ...(q ? { q } : {}),
+                ...(selectedCategory.value
+                  ? { category: selectedCategory.value }
+                  : {})
+              }
+            : {
+                ...(q ? { q } : {}),
+                ...(selectedCategory.value
+                  ? { category: selectedCategory.value }
+                  : {})
+              },
+
         signal: controller.signal,
         timeout: 10000
       }
     )
+
     if (controller.signal.aborted || !map) return
+
     const features = response.data.features
+
     searchResults.value = features
     map.getSource('places').setData(response.data)
+
     if (!features.length) {
-      searchMessage.value = nearby ? '附近5公里内未找到景点' : '未找到相关景点'
+      searchMessage.value = nearby
+        ? '附近5公里内未找到景点'
+        : currentArea
+          ? '当前区域未找到景点'
+          : '未找到相关景点'
     }
+
     if (nearby) {
       frameResults(features)
+    } else if (currentArea) {
+      // 当前区域查询不改变地图视野
     } else if ((!q && !selectedCategory.value) || !features.length) {
       overview()
     } else {
       frameResults(features)
-      if (features.length === 1) showPopup(features[0])
+
+      if (features.length === 1) {
+        showPopup(features[0])
+      }
     }
   } catch (error) {
     if (controller.signal.aborted || axios.isCancel(error)) return
 
     searchResults.value = []
     map?.getSource('places')?.setData(emptyPlaces())
-    searchMessage.value = error.response ? '景点查询失败，请稍后重试' : '无法连接后端服务'
+
+    searchMessage.value = error.response
+      ? '景点查询失败，请稍后重试'
+      : '无法连接后端服务'
   } finally {
     if (requestController === controller) {
       requestController = null
@@ -186,6 +220,7 @@ const selectCategory = async (category) => {
 
 const searchPlaces = () => loadPlaces()
 const searchNearbyPlaces = () => loadPlaces(true)
+const searchCurrentArea = () => loadPlaces(false, true)
 
 onMounted(() => {
   map = new Map({
@@ -279,6 +314,13 @@ onUnmounted(() => {
       @click="searchNearbyPlaces"
     >
       {{ loading ? '加载中…' : '附近 5km' }}
+    </button>
+
+    <button
+      @click="searchCurrentArea"
+      :disabled="loading || !mapReady"
+    >
+      {{ loading ? '加载中...' : '搜索当前区域' }}
     </button>
 
   <div class="category-filter">
