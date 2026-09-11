@@ -13,6 +13,7 @@ const searchMessage = ref('')
 const searchResults = ref([])
 const selectedPlaceId = ref(null)
 const selectedCategory = ref('')
+const mapDisplayMode = ref('points')
 
 const categories = [
   '博物馆',
@@ -115,6 +116,14 @@ const frameResults = (features) => {
     features.forEach(feature => bounds.extend(feature.geometry.coordinates))
     map.fitBounds(bounds, { padding: 80, maxZoom: 14 })
   }
+}
+
+const setMapDisplayMode = (mode) => {
+  if (!map?.getLayer('places-points') || !map.getLayer('places-heatmap')) return
+
+  mapDisplayMode.value = mode
+  map.setLayoutProperty('places-points', 'visibility', mode === 'points' ? 'visible' : 'none')
+  map.setLayoutProperty('places-heatmap', 'visibility', mode === 'heatmap' ? 'visible' : 'none')
 }
 
 // All three request paths share one lock; the source exists before any request starts.
@@ -267,6 +276,31 @@ onMounted(() => {
         'circle-stroke-width': 3
       }
     })
+    map.addLayer({
+      id: 'places-heatmap',
+      type: 'heatmap',
+      source: 'places',
+      layout: {
+        visibility: 'none'
+      },
+      paint: {
+        'heatmap-intensity': 1.1,
+        'heatmap-radius': [
+          'interpolate', ['linear'], ['zoom'],
+          8, 18,
+          14, 40
+        ],
+        'heatmap-opacity': 0.85,
+        'heatmap-color': [
+          'interpolate', ['linear'], ['heatmap-density'],
+          0, 'rgba(33, 102, 172, 0)',
+          0.25, '#4dabf7',
+          0.5, '#ffd43b',
+          0.75, '#ff922b',
+          1, '#e03131'
+        ]
+      }
+    })
     map.on('click', 'places-points', (e) => {
       const feature = e.features?.[0]
 
@@ -300,6 +334,25 @@ onUnmounted(() => {
 <template>
   <div class="map-wrapper">
     <StatisticsPanel />
+
+    <div class="map-display-control" role="group" aria-label="地图显示模式">
+      <button
+        type="button"
+        :class="{ active: mapDisplayMode === 'points' }"
+        :disabled="!mapReady"
+        @click="setMapDisplayMode('points')"
+      >
+        点位
+      </button>
+      <button
+        type="button"
+        :class="{ active: mapDisplayMode === 'heatmap' }"
+        :disabled="!mapReady"
+        @click="setMapDisplayMode('heatmap')"
+      >
+        热力图
+      </button>
+    </div>
 
     <input
       v-model="searchQuery"
@@ -463,6 +516,47 @@ body {
 
 .nearby-button:hover {
   background: #f5f5f5;
+}
+
+.map-display-control {
+  position: absolute;
+  top: 20px;
+  right: 70px;
+  z-index: 10;
+
+  display: flex;
+  overflow: hidden;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: white;
+}
+
+.map-display-control button {
+  padding: 8px 10px;
+  border: 0;
+  border-right: 1px solid #ddd;
+  background: white;
+  color: #333;
+  cursor: pointer;
+}
+
+.map-display-control button:last-child {
+  border-right: 0;
+}
+
+.map-display-control button:hover:not(:disabled) {
+  background: #f5f5f5;
+}
+
+.map-display-control button.active {
+  background: #e8f0fe;
+  color: #0b57d0;
+  font-weight: 600;
+}
+
+.map-display-control button:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 
 .result-list {

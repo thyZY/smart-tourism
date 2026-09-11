@@ -17,11 +17,15 @@ const bounds = {
 }
 const map = {
   addControl() {}, once(event, fn) { load = fn },
-  addSource(id, config) { source.data = config.data }, addLayer() {}, on() {},
+  addSource(id, config) { source.data = config.data },
+  addLayer(layer) { this.layers[layer.id] = layer }, on() {},
+  getLayer(id) { return this.layers[id] },
   getSource() { return source }, stop() {}, getBounds() { this.boundsCalls++; return bounds },
+  setLayoutProperty(id, property, value) { this.layoutProperties.push({ id, property, value }) },
   getCenter() { return { lng: 118.7921, lat: 32.0407 } },
   flyTo() { this.flyToCalls++ }, fitBounds() { this.fitBoundsCalls++ }, remove() { this.removed = true },
-  boundsCalls: 0, flyToCalls: 0, fitBoundsCalls: 0
+  boundsCalls: 0, flyToCalls: 0, fitBoundsCalls: 0,
+  layers: {}, layoutProperties: []
 }
 const context = vm.createContext({
   ref: value => ({ value }), onMounted: fn => { mounted = fn },
@@ -33,7 +37,7 @@ const context = vm.createContext({
     get: (url, options) => new Promise((resolve, reject) => requests.push({ url, options, resolve, reject }))
   }
 })
-vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, loading, searchMessage, searchQuery, selectedCategory };', context)
+vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
 const api = context.api
 const empty = { type: 'FeatureCollection', features: [] }
 const tick = () => new Promise(resolve => setImmediate(resolve))
@@ -43,6 +47,26 @@ assert.equal(requests.length, 0, 'no query before map load')
 load()
 assert.equal(source.data.type, 'FeatureCollection', 'source created before initial request')
 assert.equal(api.loading.value, true)
+assert.equal(api.mapDisplayMode.value, 'points', 'points are the default display mode')
+assert.equal(map.layers['places-points'].source, 'places')
+assert.equal(map.layers['places-heatmap'].source, 'places', 'heatmap reuses the places source')
+assert.equal(map.layers['places-heatmap'].layout.visibility, 'none', 'heatmap starts hidden')
+const sourceBeforeModeSwitch = source.data
+const requestsBeforeModeSwitch = requests.length
+api.setMapDisplayMode('heatmap')
+assert.equal(api.mapDisplayMode.value, 'heatmap')
+assert.deepEqual(map.layoutProperties.slice(-2), [
+  { id: 'places-points', property: 'visibility', value: 'none' },
+  { id: 'places-heatmap', property: 'visibility', value: 'visible' }
+])
+assert.equal(requests.length, requestsBeforeModeSwitch, 'mode switch does not request places again')
+assert.equal(source.data, sourceBeforeModeSwitch, 'mode switch does not replace source data')
+api.setMapDisplayMode('points')
+assert.equal(api.mapDisplayMode.value, 'points')
+assert.deepEqual(map.layoutProperties.slice(-2), [
+  { id: 'places-points', property: 'visibility', value: 'visible' },
+  { id: 'places-heatmap', property: 'visibility', value: 'none' }
+])
 await api.searchPlaces()
 await api.searchNearbyPlaces()
 assert.equal(requests.length, 1, 'initial load blocks competing requests')
@@ -92,6 +116,7 @@ const currentAreaData = {
 currentAreaRequest.resolve({ data: currentAreaData })
 await currentArea
 assert.equal(source.data, currentAreaData, 'current-area search updates the GeoJSON source')
+assert.equal(map.layers['places-heatmap'].source, 'places', 'filtered source data remains available to the heatmap')
 assert.equal(map.flyToCalls, flyToCallsBeforeCurrentArea, 'current-area search does not call overview or flyTo')
 assert.equal(map.fitBoundsCalls, fitBoundsCallsBeforeCurrentArea, 'current-area search does not frame results')
 const pending = api.searchPlaces()
@@ -103,4 +128,4 @@ last.resolve({ data: { type: 'FeatureCollection', features: ['stale'] } })
 await pending
 assert.equal(source.data, previous, 'late response does not update removed map')
 assert.equal(map.removed, true)
-console.log('PASS: initialization lock, duplicate suppression, failure paths, current-area bounds/query behavior, and unmount cancellation')
+console.log('PASS: initialization lock, heatmap visibility/source reuse, duplicate suppression, failure paths, current-area bounds/query behavior, and unmount cancellation')
