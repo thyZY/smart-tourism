@@ -4,6 +4,7 @@ import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { Map, NavigationControl, Popup, LngLatBounds, setWorkerUrl } from 'maplibre-gl'
 import StatisticsPanel from './components/StatisticsPanel.vue'
 import RoutePanel from './components/RoutePanel.vue'
+import PlaceDetailPanel from './components/PlaceDetailPanel.vue'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 
@@ -13,11 +14,24 @@ const searchQuery = ref('')
 const searchMessage = ref('')
 const searchResults = ref([])
 const selectedPlaceId = ref(null)
+const selectedPlace = ref(null)
 const selectedCategory = ref('')
 const mapDisplayMode = ref('points')
 const selectedRoutePlaces = ref([])
 const routeDistanceKm = ref(0)
 const favoriteStorageKey = 'smart-tourism-favorites'
+const placeDetails = {
+  1: {
+    intro: '中国著名历史文化景区，馆藏丰富，适合深入了解南京历史。',
+    opening: '09:00-17:00',
+    rating: 4.8
+  },
+  2: {
+    intro: '秦淮河畔的传统文化街区，汇集民俗、美食与古建筑。',
+    opening: '全天开放',
+    rating: 4.7
+  }
+}
 
 const readFavoritePlaceIds = () => {
   try {
@@ -203,6 +217,21 @@ const clearPopup = () => {
   searchPopup = null
 }
 
+const closePlaceDetail = () => {
+  selectedPlace.value = null
+  selectedPlaceId.value = null
+  highlightSelectedPlace(null)
+}
+
+const openPlaceDetail = (feature) => {
+  if (!feature?.properties?.id) return
+
+  selectedPlace.value = feature
+  selectedPlaceId.value = feature.properties.id
+  clearPopup()
+  highlightSelectedPlace(feature.properties.id)
+}
+
 const showPopup = (feature) => {
   clearPopup()
   const content = document.createElement('div')
@@ -268,8 +297,7 @@ const scrollSelectedIntoView = async (placeId) => {
 const focusResult = (feature) => {
   if (!map || !feature?.geometry?.coordinates) return
 
-  selectedPlaceId.value = feature.properties.id
-  highlightSelectedPlace(feature.properties.id)
+  openPlaceDetail(feature)
   scrollSelectedIntoView(feature.properties.id)
 
   map.flyTo({
@@ -277,7 +305,6 @@ const focusResult = (feature) => {
     zoom: 15
   })
 
-  showPopup(feature)
 }
 
 const overview = () => map.flyTo({ center: [118.7969, 32.0603], zoom: 10 })
@@ -500,10 +527,7 @@ onMounted(() => {
 
       if (!feature) return
 
-      selectedPlaceId.value = feature.properties.id
-      highlightSelectedPlace(feature.properties.id)
-
-      showPopup(feature)
+      openPlaceDetail(feature)
     })
     map.on('mouseenter', 'places-points', () => {
       map.getCanvas().style.cursor = 'pointer'
@@ -532,6 +556,15 @@ onUnmounted(() => {
       :places="selectedRoutePlaces"
       :distance-km="routeDistanceKm"
       @clear="clearRoute"
+    />
+    <PlaceDetailPanel
+      :place="selectedPlace"
+      :place-details="placeDetails"
+      :is-favorite="selectedPlace ? isFavorite(selectedPlace.properties.id) : false"
+      :is-in-route="selectedPlace ? selectedRoutePlaces.some((place) => place.properties.id === selectedPlace.properties.id) : false"
+      @close="closePlaceDetail"
+      @toggle-favorite="selectedPlace && toggleFavorite(selectedPlace)"
+      @toggle-route="selectedPlace && toggleRoutePlace(selectedPlace)"
     />
 
     <div class="map-display-control" role="group" aria-label="地图显示模式">
@@ -629,7 +662,7 @@ onUnmounted(() => {
           )
         }
       ]"
-      @click="toggleRoutePlace(feature); focusResult(feature)"
+      @click="focusResult(feature)"
     >
       <button
         class="favorite-toggle"

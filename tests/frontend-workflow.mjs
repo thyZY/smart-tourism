@@ -24,26 +24,32 @@ const bounds = {
 const map = {
   addControl() {}, once(event, fn) { load = fn },
   addSource(id, config) { this.sources[id] = createSource(config.data) },
-  addLayer(layer) { this.layers[layer.id] = layer }, on() {},
+  addLayer(layer) { this.layers[layer.id] = layer },
+  on(event, layer, handler) {
+    this.handlers[`${event}:${layer}`] = handler
+  },
   getLayer(id) { return this.layers[id] },
   getSource(id) { return this.sources[id] }, stop() {}, getBounds() { this.boundsCalls++; return bounds },
   setLayoutProperty(id, property, value) { this.layoutProperties.push({ id, property, value }) },
+  setPaintProperty() { this.paintUpdates++ },
   getCenter() { return { lng: 118.7921, lat: 32.0407 } },
   flyTo() { this.flyToCalls++ }, fitBounds() { this.fitBoundsCalls++ }, remove() { this.removed = true },
   boundsCalls: 0, flyToCalls: 0, fitBoundsCalls: 0,
-  layers: {}, sources: {}, layoutProperties: []
+  layers: {}, sources: {}, handlers: {}, layoutProperties: [], paintUpdates: 0
 }
 const context = vm.createContext({
   ref: value => ({ value }), onMounted: fn => { mounted = fn },
   onUnmounted: fn => { unmounted = fn },
+  nextTick: () => Promise.resolve(),
   Map: function () { return map }, NavigationControl: function () {},
   setWorkerUrl() {}, workerUrl: '', AbortController, localStorage,
+  document: { querySelector: () => null },
   axios: {
     isCancel: () => false,
     get: (url, options) => new Promise((resolve, reject) => requests.push({ url, options, resolve, reject }))
   }
 })
-vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, toggleRoutePlace, clearRoute, toggleFavorite, showFavoritePlaces, favoritePlaceIds, showFavoritesOnly, selectedRoutePlaces, routeDistanceKm, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
+vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, focusResult, closePlaceDetail, toggleRoutePlace, clearRoute, toggleFavorite, showFavoritePlaces, isFavorite, favoritePlaceIds, showFavoritesOnly, selectedRoutePlaces, routeDistanceKm, selectedPlace, selectedPlaceId, placeDetails, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
 const api = context.api
 const empty = { type: 'FeatureCollection', features: [] }
 const tick = () => new Promise(resolve => setImmediate(resolve))
@@ -128,7 +134,7 @@ assert.equal(map.flyToCalls, flyToCallsBeforeCurrentArea, 'current-area search d
 assert.equal(map.fitBoundsCalls, fitBoundsCallsBeforeCurrentArea, 'current-area search does not frame results')
 const museum = {
   type: 'Feature',
-  properties: { id: 1, name: '南京博物院' },
+  properties: { id: 1, name: '南京博物院', category: '博物馆', address: '中山东路321号' },
   geometry: { type: 'Point', coordinates: [118.7921, 32.0407] }
 }
 const confuciusTemple = {
@@ -149,9 +155,27 @@ api.selectedCategory.value = ''
 const allPlacesRequest = api.searchPlaces()
 requests.at(-1).resolve({ data: allPlaces })
 await allPlacesRequest
+api.focusResult(museum)
+assert.equal(api.selectedPlace.value, museum, 'list selection stores the selected place feature')
+assert.equal(api.selectedPlace.value.properties.name, '南京博物院', 'detail panel receives the selected place name')
+assert.equal(api.placeDetails[1].rating, 4.8, 'selected place uses the static detail configuration')
+assert.equal(api.isFavorite(museum.properties.id), false, 'detail favorite state starts in sync')
+api.toggleFavorite(museum)
+assert.equal(api.isFavorite(museum.properties.id), true, 'detail favorite state updates through existing favorite logic')
+api.toggleRoutePlace(museum)
+assert.equal(api.selectedRoutePlaces.value.length, 1, 'detail route action uses existing route selection')
+api.closePlaceDetail()
+assert.equal(api.selectedPlace.value, null, 'closing detail clears selected place')
+assert.equal(api.selectedPlaceId.value, null, 'closing detail clears selected place highlight')
+api.toggleFavorite(museum)
+api.toggleRoutePlace(museum)
+map.handlers['click:places-points']({ features: [museum] })
+assert.equal(api.selectedPlace.value, museum, 'marker selection stores the selected place feature')
+api.closePlaceDetail()
 assert.equal(api.favoritePlaceIds.value.length, 0, 'favorites start empty without stored data')
 assert.equal(api.selectedRoutePlaces.value.length, 0, 'favorites start independent from routes')
 assert.match(appSource, /@click\.stop="toggleFavorite\(feature\)"/, 'favorite button stops result-item click propagation')
+assert.match(appSource, /@click="focusResult\(feature\)"/, 'result selection opens details without changing the route')
 api.toggleFavorite(museum)
 assert.deepEqual(JSON.parse(JSON.stringify(api.favoritePlaceIds.value)), [1], 'favorite ID is stored once')
 assert.equal(localStorage.getItem('smart-tourism-favorites'), '[1]', 'favorite IDs persist to localStorage')
