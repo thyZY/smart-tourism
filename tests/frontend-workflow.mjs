@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
+import themes from '../frontend/src/data/themes.js'
 
 const appSource = readFileSync(new URL('../frontend/src/App.vue', import.meta.url), 'utf8')
 const script = appSource.split('<script setup>')[1].split('</script>')[0].replace(/^import .*$/gm, '')
@@ -42,14 +43,14 @@ const context = vm.createContext({
   onUnmounted: fn => { unmounted = fn },
   nextTick: () => Promise.resolve(),
   Map: function () { return map }, NavigationControl: function () {},
-  setWorkerUrl() {}, workerUrl: '', AbortController, localStorage,
+  setWorkerUrl() {}, workerUrl: '', AbortController, localStorage, themes,
   document: { querySelector: () => null },
   axios: {
     isCancel: () => false,
     get: (url, options) => new Promise((resolve, reject) => requests.push({ url, options, resolve, reject }))
   }
 })
-vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, focusResult, closePlaceDetail, toggleRoutePlace, clearRoute, toggleFavorite, showFavoritePlaces, isFavorite, favoritePlaceIds, showFavoritesOnly, selectedRoutePlaces, routeDistanceKm, selectedPlace, selectedPlaceId, placeDetails, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
+vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, selectTheme, selectedTheme, focusResult, closePlaceDetail, toggleRoutePlace, clearRoute, toggleFavorite, showFavoritePlaces, isFavorite, favoritePlaceIds, showFavoritesOnly, selectedRoutePlaces, routeDistanceKm, selectedPlace, selectedPlaceId, placeDetails, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
 const api = context.api
 const empty = { type: 'FeatureCollection', features: [] }
 const tick = () => new Promise(resolve => setImmediate(resolve))
@@ -139,16 +140,17 @@ const museum = {
 }
 const confuciusTemple = {
   type: 'Feature',
-  properties: { id: 2, name: '夫子庙' },
+  properties: { id: 2, name: '夫子庙', category: '历史文化' },
   geometry: { type: 'Point', coordinates: [118.7877, 32.0270] }
+}
+const historicalSite = {
+  type: 'Feature',
+  properties: { id: 3, name: '中华门瓮城', category: '古迹遗址' },
+  geometry: { type: 'Point', coordinates: [118.7800, 32.0200] }
 }
 const allPlaces = {
   type: 'FeatureCollection',
-  features: [museum, confuciusTemple, {
-    type: 'Feature',
-    properties: { id: 3, name: '中山陵' },
-    geometry: { type: 'Point', coordinates: [118.8487, 32.0593] }
-  }]
+  features: [museum, confuciusTemple, historicalSite]
 }
 api.searchQuery.value = ''
 api.selectedCategory.value = ''
@@ -176,6 +178,30 @@ assert.equal(api.favoritePlaceIds.value.length, 0, 'favorites start empty withou
 assert.equal(api.selectedRoutePlaces.value.length, 0, 'favorites start independent from routes')
 assert.match(appSource, /@click\.stop="toggleFavorite\(feature\)"/, 'favorite button stops result-item click propagation')
 assert.match(appSource, /@click="focusResult\(feature\)"/, 'result selection opens details without changing the route')
+assert.match(appSource, /<ThemePanel/, 'theme panel is mounted in the application')
+assert.equal(themes.length, 3, 'three static tourism themes are available')
+assert.deepEqual(themes[0].categories, ['历史文化', '古迹遗址'], 'history theme has its configured categories')
+api.setMapDisplayMode('heatmap')
+api.selectTheme(themes[0])
+assert.equal(api.selectedTheme.value.id, 'history-culture', 'selecting a theme enters theme mode')
+assert.deepEqual(
+  JSON.parse(JSON.stringify(api.selectedRoutePlaces.value.map((feature) => feature.properties.id))),
+  [2, 3],
+  'theme selection generates a sightseeing route from matching current POIs'
+)
+assert.deepEqual(
+  JSON.parse(JSON.stringify(map.sources.places.data.features.map((feature) => feature.properties.id))),
+  [2, 3],
+  'theme selection filters the places GeoJSON source'
+)
+assert.equal(map.layers['places-heatmap'].source, 'places', 'heatmap continues to reuse themed places source')
+const normalAfterTheme = api.searchPlaces()
+assert.equal(api.selectedTheme.value, null, 'normal search exits theme mode')
+requests.at(-1).resolve({ data: allPlaces })
+await normalAfterTheme
+assert.equal(map.sources.places.data.features.length, 3, 'normal search restores ordinary POIs after a theme')
+api.clearRoute()
+api.setMapDisplayMode('points')
 api.toggleFavorite(museum)
 assert.deepEqual(JSON.parse(JSON.stringify(api.favoritePlaceIds.value)), [1], 'favorite ID is stored once')
 assert.equal(localStorage.getItem('smart-tourism-favorites'), '[1]', 'favorite IDs persist to localStorage')
@@ -259,4 +285,4 @@ assert.deepEqual(
   [],
   'invalid localStorage JSON restores as an empty favorites list'
 )
-console.log('PASS: initialization lock, heatmap reuse, route planning, persistent favorites/filtering/empty state, failure paths, current-area bounds/query behavior, and unmount cancellation')
+console.log('PASS: initialization lock, theme filtering/route generation, heatmap reuse, route planning, persistent favorites/filtering/empty state, failure paths, current-area bounds/query behavior, and unmount cancellation')

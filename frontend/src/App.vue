@@ -5,6 +5,8 @@ import { Map, NavigationControl, Popup, LngLatBounds, setWorkerUrl } from 'mapli
 import StatisticsPanel from './components/StatisticsPanel.vue'
 import RoutePanel from './components/RoutePanel.vue'
 import PlaceDetailPanel from './components/PlaceDetailPanel.vue'
+import ThemePanel from './components/ThemePanel.vue'
+import themes from './data/themes.js'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 
@@ -19,6 +21,7 @@ const selectedCategory = ref('')
 const mapDisplayMode = ref('points')
 const selectedRoutePlaces = ref([])
 const routeDistanceKm = ref(0)
+const selectedTheme = ref(null)
 const favoriteStorageKey = 'smart-tourism-favorites'
 const placeDetails = {
   1: {
@@ -47,6 +50,7 @@ const readFavoritePlaceIds = () => {
 const favoritePlaceIds = ref(readFavoritePlaceIds())
 const showFavoritesOnly = ref(false)
 let allPlacesCache = null
+let themeBaseFeatures = null
 
 const categories = [
   '博物馆',
@@ -110,6 +114,7 @@ const toggleFavorite = (feature) => {
 const showFavoritePlaces = async () => {
   if (!mapReady.value || loading.value) return
 
+  exitThemeMode()
   showFavoritesOnly.value = true
   clearPopup()
   searchMessage.value = ''
@@ -210,6 +215,38 @@ const toggleRoutePlace = (feature) => {
 const clearRoute = () => {
   selectedRoutePlaces.value = []
   updateRoute()
+}
+
+const exitThemeMode = () => {
+  selectedTheme.value = null
+  themeBaseFeatures = null
+}
+
+const selectTheme = (theme) => {
+  if (!mapReady.value || loading.value || !theme) return
+
+  if (!selectedTheme.value) themeBaseFeatures = searchResults.value
+
+  selectedTheme.value = theme
+  showFavoritesOnly.value = false
+  clearPopup()
+
+  const features = (themeBaseFeatures ?? searchResults.value).filter(
+    (feature) => theme.categories.includes(feature.properties.category)
+  )
+  const collection = { type: 'FeatureCollection', features }
+
+  searchResults.value = features
+  map?.getSource('places')?.setData(collection)
+  selectedRoutePlaces.value = features
+  updateRoute()
+  searchMessage.value = features.length ? '' : '该主题暂无景点'
+
+  if (selectedPlace.value && !features.some(
+    (feature) => feature.properties.id === selectedPlace.value.properties.id
+  )) {
+    closePlaceDetail()
+  }
 }
 
 const clearPopup = () => {
@@ -331,6 +368,7 @@ const setMapDisplayMode = (mode) => {
 const loadPlaces = async (nearby = false, currentArea = false) => {
   if (!mapReady.value || loading.value) return
 
+  exitThemeMode()
   showFavoritesOnly.value = false
   loading.value = true
   clearPopup()
@@ -565,6 +603,11 @@ onUnmounted(() => {
       @close="closePlaceDetail"
       @toggle-favorite="selectedPlace && toggleFavorite(selectedPlace)"
       @toggle-route="selectedPlace && toggleRoutePlace(selectedPlace)"
+    />
+    <ThemePanel
+      :themes="themes"
+      :selected-theme="selectedTheme"
+      @select="selectTheme"
     />
 
     <div class="map-display-control" role="group" aria-label="地图显示模式">
