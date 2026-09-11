@@ -8,7 +8,7 @@ const script = readFileSync(new URL('../frontend/src/App.vue', import.meta.url),
   .split('<script setup>')[1].split('</script>')[0].replace(/^import .*$/gm, '')
 const requests = []
 let mounted, unmounted, load
-const source = { data: null, setData(data) { this.data = data } }
+const createSource = (data = null) => ({ data, setData(nextData) { this.data = nextData } })
 const bounds = {
   getWest: () => 118.785,
   getSouth: () => 32.025,
@@ -17,15 +17,15 @@ const bounds = {
 }
 const map = {
   addControl() {}, once(event, fn) { load = fn },
-  addSource(id, config) { source.data = config.data },
+  addSource(id, config) { this.sources[id] = createSource(config.data) },
   addLayer(layer) { this.layers[layer.id] = layer }, on() {},
   getLayer(id) { return this.layers[id] },
-  getSource() { return source }, stop() {}, getBounds() { this.boundsCalls++; return bounds },
+  getSource(id) { return this.sources[id] }, stop() {}, getBounds() { this.boundsCalls++; return bounds },
   setLayoutProperty(id, property, value) { this.layoutProperties.push({ id, property, value }) },
   getCenter() { return { lng: 118.7921, lat: 32.0407 } },
   flyTo() { this.flyToCalls++ }, fitBounds() { this.fitBoundsCalls++ }, remove() { this.removed = true },
   boundsCalls: 0, flyToCalls: 0, fitBoundsCalls: 0,
-  layers: {}, layoutProperties: []
+  layers: {}, sources: {}, layoutProperties: []
 }
 const context = vm.createContext({
   ref: value => ({ value }), onMounted: fn => { mounted = fn },
@@ -37,7 +37,7 @@ const context = vm.createContext({
     get: (url, options) => new Promise((resolve, reject) => requests.push({ url, options, resolve, reject }))
   }
 })
-vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
+vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, toggleRoutePlace, clearRoute, selectedRoutePlaces, routeDistanceKm, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
 const api = context.api
 const empty = { type: 'FeatureCollection', features: [] }
 const tick = () => new Promise(resolve => setImmediate(resolve))
@@ -45,13 +45,14 @@ mounted()
 await api.searchNearbyPlaces()
 assert.equal(requests.length, 0, 'no query before map load')
 load()
-assert.equal(source.data.type, 'FeatureCollection', 'source created before initial request')
+assert.equal(map.sources.places.data.type, 'FeatureCollection', 'places source is created before initial request')
+assert.equal(map.sources['route-line'].data.type, 'FeatureCollection', 'route source is created before initial request')
 assert.equal(api.loading.value, true)
 assert.equal(api.mapDisplayMode.value, 'points', 'points are the default display mode')
 assert.equal(map.layers['places-points'].source, 'places')
 assert.equal(map.layers['places-heatmap'].source, 'places', 'heatmap reuses the places source')
 assert.equal(map.layers['places-heatmap'].layout.visibility, 'none', 'heatmap starts hidden')
-const sourceBeforeModeSwitch = source.data
+const sourceBeforeModeSwitch = map.sources.places.data
 const requestsBeforeModeSwitch = requests.length
 api.setMapDisplayMode('heatmap')
 assert.equal(api.mapDisplayMode.value, 'heatmap')
@@ -60,7 +61,7 @@ assert.deepEqual(map.layoutProperties.slice(-2), [
   { id: 'places-heatmap', property: 'visibility', value: 'visible' }
 ])
 assert.equal(requests.length, requestsBeforeModeSwitch, 'mode switch does not request places again')
-assert.equal(source.data, sourceBeforeModeSwitch, 'mode switch does not replace source data')
+assert.equal(map.sources.places.data, sourceBeforeModeSwitch, 'mode switch does not replace source data')
 api.setMapDisplayMode('points')
 assert.equal(api.mapDisplayMode.value, 'points')
 assert.deepEqual(map.layoutProperties.slice(-2), [
@@ -115,17 +116,44 @@ const currentAreaData = {
 }
 currentAreaRequest.resolve({ data: currentAreaData })
 await currentArea
-assert.equal(source.data, currentAreaData, 'current-area search updates the GeoJSON source')
+assert.equal(map.sources.places.data, currentAreaData, 'current-area search updates the GeoJSON source')
 assert.equal(map.layers['places-heatmap'].source, 'places', 'filtered source data remains available to the heatmap')
 assert.equal(map.flyToCalls, flyToCallsBeforeCurrentArea, 'current-area search does not call overview or flyTo')
 assert.equal(map.fitBoundsCalls, fitBoundsCallsBeforeCurrentArea, 'current-area search does not frame results')
+const museum = {
+  type: 'Feature',
+  properties: { id: 1, name: '南京博物院' },
+  geometry: { type: 'Point', coordinates: [118.7921, 32.0407] }
+}
+const confuciusTemple = {
+  type: 'Feature',
+  properties: { id: 2, name: '夫子庙' },
+  geometry: { type: 'Point', coordinates: [118.7877, 32.0270] }
+}
+api.toggleRoutePlace(museum)
+assert.equal(api.selectedRoutePlaces.value.length, 1, 'first route place is selected')
+assert.equal(map.sources['route-line'].data.features.length, 0, 'one selected place has no line')
+api.toggleRoutePlace(confuciusTemple)
+assert.equal(api.selectedRoutePlaces.value.length, 2, 'second route place is selected')
+const route = map.sources['route-line'].data.features[0].geometry
+assert.deepEqual(JSON.parse(JSON.stringify(route)), {
+  type: 'LineString',
+  coordinates: [[118.7921, 32.0407], [118.7877, 32.0270]]
+}, 'route line preserves selection order')
+assert.ok(api.routeDistanceKm.value > 1 && api.routeDistanceKm.value < 2, 'route distance uses haversine kilometers')
+api.toggleRoutePlace(museum)
+assert.equal(api.selectedRoutePlaces.value.length, 1, 'selecting an existing place removes it')
+assert.equal(map.sources['route-line'].data.features.length, 0, 'line clears when fewer than two places remain')
+api.clearRoute()
+assert.equal(api.selectedRoutePlaces.value.length, 0, 'clear route removes all selected places')
+assert.equal(api.routeDistanceKm.value, 0, 'clear route resets distance')
 const pending = api.searchPlaces()
 const last = requests.at(-1)
-const previous = source.data
+const previous = map.sources.places.data
 unmounted()
 assert.equal(last.options.signal.aborted, true)
 last.resolve({ data: { type: 'FeatureCollection', features: ['stale'] } })
 await pending
-assert.equal(source.data, previous, 'late response does not update removed map')
+assert.equal(map.sources.places.data, previous, 'late response does not update removed map')
 assert.equal(map.removed, true)
-console.log('PASS: initialization lock, heatmap visibility/source reuse, duplicate suppression, failure paths, current-area bounds/query behavior, and unmount cancellation')
+console.log('PASS: initialization lock, heatmap visibility/source reuse, route selection/LineString/haversine/clear, duplicate suppression, failure paths, current-area bounds/query behavior, and unmount cancellation')

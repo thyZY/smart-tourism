@@ -3,6 +3,7 @@ import axios from 'axios'
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { Map, NavigationControl, Popup, LngLatBounds, setWorkerUrl } from 'maplibre-gl'
 import StatisticsPanel from './components/StatisticsPanel.vue'
+import RoutePanel from './components/RoutePanel.vue'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 
@@ -14,6 +15,8 @@ const searchResults = ref([])
 const selectedPlaceId = ref(null)
 const selectedCategory = ref('')
 const mapDisplayMode = ref('points')
+const selectedRoutePlaces = ref([])
+const routeDistanceKm = ref(0)
 
 const categories = [
   '博物馆',
@@ -34,6 +37,71 @@ const loading = ref(false)
 const mapReady = ref(false)
 let requestController = null
 const emptyPlaces = () => ({ type: 'FeatureCollection', features: [] })
+const emptyRoute = () => ({ type: 'FeatureCollection', features: [] })
+
+const calculateDistanceKm = (from, to) => {
+  const [fromLng, fromLat] = from
+  const [toLng, toLat] = to
+  const toRadians = (degrees) => degrees * Math.PI / 180
+  const deltaLat = toRadians(toLat - fromLat)
+  const deltaLng = toRadians(toLng - fromLng)
+  const a = Math.sin(deltaLat / 2) ** 2 +
+    Math.cos(toRadians(fromLat)) * Math.cos(toRadians(toLat)) *
+    Math.sin(deltaLng / 2) ** 2
+
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+const updateRoute = () => {
+  const routeCoordinates = selectedRoutePlaces.value
+    .map((feature) => feature.geometry?.coordinates)
+    .filter((coordinates) => Array.isArray(coordinates))
+
+  routeDistanceKm.value = routeCoordinates.slice(1).reduce(
+    (total, currentCoordinates, index) => total + calculateDistanceKm(
+      routeCoordinates[index],
+      currentCoordinates
+    ),
+    0
+  )
+
+  const routeData = routeCoordinates.length >= 2
+    ? {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {},
+          geometry: { type: 'LineString', coordinates: routeCoordinates }
+        }]
+      }
+    : emptyRoute()
+
+  map?.getSource('route-line')?.setData(routeData)
+}
+
+const toggleRoutePlace = (feature) => {
+  const placeId = feature?.properties?.id
+  if (placeId == null) return
+
+  const existingIndex = selectedRoutePlaces.value.findIndex(
+    (place) => place.properties.id === placeId
+  )
+
+  if (existingIndex === -1) {
+    selectedRoutePlaces.value = [...selectedRoutePlaces.value, feature]
+  } else {
+    selectedRoutePlaces.value = selectedRoutePlaces.value.filter(
+      (place) => place.properties.id !== placeId
+    )
+  }
+
+  updateRoute()
+}
+
+const clearRoute = () => {
+  selectedRoutePlaces.value = []
+  updateRoute()
+}
 
 const clearPopup = () => {
   searchPopup?.remove()
@@ -265,6 +333,7 @@ onMounted(() => {
   )
   map.once('load', () => {
     map.addSource('places', { type: 'geojson', data: emptyPlaces() })
+    map.addSource('route-line', { type: 'geojson', data: emptyRoute() })
     map.addLayer({
       id: 'places-points',
       type: 'circle',
@@ -301,6 +370,20 @@ onMounted(() => {
         ]
       }
     })
+    map.addLayer({
+      id: 'route-line',
+      type: 'line',
+      source: 'route-line',
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round'
+      },
+      paint: {
+        'line-color': '#2563eb',
+        'line-width': 5,
+        'line-opacity': 0.85
+      }
+    })
     map.on('click', 'places-points', (e) => {
       const feature = e.features?.[0]
 
@@ -334,6 +417,11 @@ onUnmounted(() => {
 <template>
   <div class="map-wrapper">
     <StatisticsPanel />
+    <RoutePanel
+      :places="selectedRoutePlaces"
+      :distance-km="routeDistanceKm"
+      @clear="clearRoute"
+    />
 
     <div class="map-display-control" role="group" aria-label="地图显示模式">
       <button
@@ -414,9 +502,14 @@ onUnmounted(() => {
       :data-place-id="feature.properties.id"
       :class="[
         'result-item',
-        { 'result-item-selected': selectedPlaceId === feature.properties.id }
+        {
+          'result-item-selected': selectedPlaceId === feature.properties.id,
+          'result-item-route-selected': selectedRoutePlaces.some(
+            (place) => place.properties.id === feature.properties.id
+          )
+        }
       ]"
-      @click="focusResult(feature)"
+      @click="toggleRoutePlace(feature); focusResult(feature)"
     >
       <strong>{{ feature.properties.name }}</strong>
       <div>{{ feature.properties.category }}</div>
@@ -597,6 +690,11 @@ body {
 .result-item-selected {
   background: #e8f0fe;
   font-weight: 600;
+}
+
+.result-item-route-selected {
+  border-left: 4px solid #2563eb;
+  padding-left: 8px;
 }
 
 .category-filter {
