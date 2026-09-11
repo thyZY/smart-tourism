@@ -6,7 +6,9 @@ import StatisticsPanel from './components/StatisticsPanel.vue'
 import RoutePanel from './components/RoutePanel.vue'
 import PlaceDetailPanel from './components/PlaceDetailPanel.vue'
 import ThemePanel from './components/ThemePanel.vue'
+import CulturalLinePanel from './components/CulturalLinePanel.vue'
 import themes from './data/themes.js'
+import culturalLines from './data/culturalLines.js'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 
@@ -22,6 +24,7 @@ const mapDisplayMode = ref('points')
 const selectedRoutePlaces = ref([])
 const routeDistanceKm = ref(0)
 const selectedTheme = ref(null)
+const selectedCulturalLine = ref(null)
 const favoriteStorageKey = 'smart-tourism-favorites'
 const placeDetails = {
   1: {
@@ -72,6 +75,7 @@ const mapReady = ref(false)
 let requestController = null
 const emptyPlaces = () => ({ type: 'FeatureCollection', features: [] })
 const emptyRoute = () => ({ type: 'FeatureCollection', features: [] })
+const emptyCulturalLine = () => ({ type: 'FeatureCollection', features: [] })
 
 const persistFavorites = () => {
   try {
@@ -215,6 +219,44 @@ const toggleRoutePlace = (feature) => {
 const clearRoute = () => {
   selectedRoutePlaces.value = []
   updateRoute()
+}
+
+const culturalLineCollection = (line) => {
+  const availablePlaces = allPlacesCache?.features ?? searchResults.value
+  const matchingPlaces = line.places
+    .map((placeName) => availablePlaces.find(
+      (feature) => feature.properties.name === placeName
+    ))
+    .filter(Boolean)
+  const coordinates = matchingPlaces
+    .map((feature) => feature.geometry?.coordinates)
+    .filter(Array.isArray)
+
+  const data = coordinates.length >= 2
+    ? {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: { id: line.id, name: line.name },
+          geometry: { type: 'LineString', coordinates }
+        }]
+      }
+    : emptyCulturalLine()
+
+  return { data, matchingPlaces }
+}
+
+const selectCulturalLine = (line) => {
+  if (!line) return
+
+  const { data } = culturalLineCollection(line)
+  selectedCulturalLine.value = line
+  map?.getSource('cultural-line')?.setData(data)
+}
+
+const clearCulturalLine = () => {
+  selectedCulturalLine.value = null
+  map?.getSource('cultural-line')?.setData(emptyCulturalLine())
 }
 
 const exitThemeMode = () => {
@@ -510,6 +552,7 @@ onMounted(() => {
   map.once('load', () => {
     map.addSource('places', { type: 'geojson', data: emptyPlaces() })
     map.addSource('route-line', { type: 'geojson', data: emptyRoute() })
+    map.addSource('cultural-line', { type: 'geojson', data: emptyCulturalLine() })
     map.addLayer({
       id: 'places-points',
       type: 'circle',
@@ -560,6 +603,21 @@ onMounted(() => {
         'line-opacity': 0.85
       }
     })
+    map.addLayer({
+      id: 'cultural-line-layer',
+      type: 'line',
+      source: 'cultural-line',
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round'
+      },
+      paint: {
+        'line-color': '#7c3aed',
+        'line-width': 4,
+        'line-opacity': 0.8,
+        'line-dasharray': [2, 1]
+      }
+    })
     map.on('click', 'places-points', (e) => {
       const feature = e.features?.[0]
 
@@ -608,6 +666,12 @@ onUnmounted(() => {
       :themes="themes"
       :selected-theme="selectedTheme"
       @select="selectTheme"
+    />
+    <CulturalLinePanel
+      :lines="culturalLines"
+      :selected-line="selectedCulturalLine"
+      @select="selectCulturalLine"
+      @clear="clearCulturalLine"
     />
 
     <div class="map-display-control" role="group" aria-label="地图显示模式">
