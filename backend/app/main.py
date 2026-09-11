@@ -40,6 +40,40 @@ def health_check():
         "message": "Smart Tourism API is running"
     }
 
+
+@app.get("/api/statistics")
+def get_statistics():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SELECT COUNT(*) FROM places;")
+        total_places = cursor.fetchone()[0]
+
+        cursor.execute("""
+            SELECT category, COUNT(*) AS place_count
+            FROM places
+            GROUP BY category
+            ORDER BY place_count DESC, category ASC;
+        """)
+        category_rows = cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
+
+    category_counts = {category: count for category, count in category_rows}
+    top_categories = [
+        {"category": category, "count": count}
+        for category, count in category_rows[:3]
+    ]
+
+    return {
+        "total_places": total_places,
+        "category_counts": category_counts,
+        "top_categories": top_categories
+    }
+
+
 @app.get("/api/places")
 def get_places(
     q: str | None = None,

@@ -1,10 +1,12 @@
 """Regression tests against the running local API and the 40-POI dataset."""
 import json
+from collections import Counter
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
 
 BASE_URL = 'http://127.0.0.1:8010/api/places'
+STATISTICS_URL = 'http://127.0.0.1:8010/api/statistics'
 BBOX = {
     'min_lng': 118.785,
     'min_lat': 32.025,
@@ -29,6 +31,17 @@ def get(path='', **params):
     return data['features']
 
 
+def get_statistics():
+    with urlopen(STATISTICS_URL, timeout=10) as response:
+        assert response.status == 200
+        data = json.load(response)
+    assert set(data) == {'total_places', 'category_counts', 'top_categories'}
+    assert isinstance(data['total_places'], int)
+    assert isinstance(data['category_counts'], dict)
+    assert isinstance(data['top_categories'], list)
+    return data
+
+
 def assert_in_bbox(features):
     for feature in features:
         lng, lat = feature['geometry']['coordinates']
@@ -38,6 +51,19 @@ def assert_in_bbox(features):
 
 all_places = get()
 assert len(all_places) == 40
+
+statistics = get_statistics()
+category_counts = Counter(f['properties']['category'] for f in all_places)
+assert statistics['total_places'] == len(all_places)
+assert statistics['category_counts'] == dict(category_counts)
+assert len(statistics['top_categories']) == 3
+assert [item['count'] for item in statistics['top_categories']] == sorted(
+    (item['count'] for item in statistics['top_categories']), reverse=True
+)
+assert all(
+    statistics['category_counts'][item['category']] == item['count']
+    for item in statistics['top_categories']
+)
 
 query = get(q='南京')
 assert len(query) == 8
@@ -79,4 +105,4 @@ assert len(nearby_museums) <= len(nearby)
 assert all(f['properties']['category'] == '博物馆' for f in nearby_museums)
 assert all(0 <= f['properties']['distance_km'] <= 5 for f in nearby_museums)
 
-print('PASS: all /places q/category/bbox combinations and nearby category filtering')
+print('PASS: statistics, all /places q/category/bbox combinations, and nearby category filtering')

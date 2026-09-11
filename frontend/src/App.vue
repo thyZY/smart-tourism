@@ -2,6 +2,7 @@
 import axios from 'axios'
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { Map, NavigationControl, Popup, LngLatBounds, setWorkerUrl } from 'maplibre-gl'
+import StatisticsPanel from './components/StatisticsPanel.vue'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 
@@ -298,6 +299,8 @@ onUnmounted(() => {
 
 <template>
   <div class="map-wrapper">
+    <StatisticsPanel />
+
     <input
       v-model="searchQuery"
       class="search-box"
