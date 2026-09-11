@@ -4,11 +4,17 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 
-const script = readFileSync(new URL('../frontend/src/App.vue', import.meta.url), 'utf8')
-  .split('<script setup>')[1].split('</script>')[0].replace(/^import .*$/gm, '')
+const appSource = readFileSync(new URL('../frontend/src/App.vue', import.meta.url), 'utf8')
+const script = appSource.split('<script setup>')[1].split('</script>')[0].replace(/^import .*$/gm, '')
 const requests = []
 let mounted, unmounted, load
 const createSource = (data = null) => ({ data, setData(nextData) { this.data = nextData } })
+const createStorage = (initialValues = {}) => ({
+  values: new Map(Object.entries(initialValues)),
+  getItem(key) { return this.values.has(key) ? this.values.get(key) : null },
+  setItem(key, value) { this.values.set(key, String(value)) }
+})
+const localStorage = createStorage()
 const bounds = {
   getWest: () => 118.785,
   getSouth: () => 32.025,
@@ -31,13 +37,13 @@ const context = vm.createContext({
   ref: value => ({ value }), onMounted: fn => { mounted = fn },
   onUnmounted: fn => { unmounted = fn },
   Map: function () { return map }, NavigationControl: function () {},
-  setWorkerUrl() {}, workerUrl: '', AbortController,
+  setWorkerUrl() {}, workerUrl: '', AbortController, localStorage,
   axios: {
     isCancel: () => false,
     get: (url, options) => new Promise((resolve, reject) => requests.push({ url, options, resolve, reject }))
   }
 })
-vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, toggleRoutePlace, clearRoute, selectedRoutePlaces, routeDistanceKm, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
+vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, toggleRoutePlace, clearRoute, toggleFavorite, showFavoritePlaces, favoritePlaceIds, showFavoritesOnly, selectedRoutePlaces, routeDistanceKm, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
 const api = context.api
 const empty = { type: 'FeatureCollection', features: [] }
 const tick = () => new Promise(resolve => setImmediate(resolve))
@@ -130,6 +136,50 @@ const confuciusTemple = {
   properties: { id: 2, name: '夫子庙' },
   geometry: { type: 'Point', coordinates: [118.7877, 32.0270] }
 }
+const allPlaces = {
+  type: 'FeatureCollection',
+  features: [museum, confuciusTemple, {
+    type: 'Feature',
+    properties: { id: 3, name: '中山陵' },
+    geometry: { type: 'Point', coordinates: [118.8487, 32.0593] }
+  }]
+}
+api.searchQuery.value = ''
+api.selectedCategory.value = ''
+const allPlacesRequest = api.searchPlaces()
+requests.at(-1).resolve({ data: allPlaces })
+await allPlacesRequest
+assert.equal(api.favoritePlaceIds.value.length, 0, 'favorites start empty without stored data')
+assert.equal(api.selectedRoutePlaces.value.length, 0, 'favorites start independent from routes')
+assert.match(appSource, /@click\.stop="toggleFavorite\(feature\)"/, 'favorite button stops result-item click propagation')
+api.toggleFavorite(museum)
+assert.deepEqual(JSON.parse(JSON.stringify(api.favoritePlaceIds.value)), [1], 'favorite ID is stored once')
+assert.equal(localStorage.getItem('smart-tourism-favorites'), '[1]', 'favorite IDs persist to localStorage')
+assert.equal(api.selectedRoutePlaces.value.length, 0, 'favorite toggle does not change routes')
+api.toggleFavorite(museum)
+assert.equal(api.favoritePlaceIds.value.length, 0, 'favorite toggles off')
+assert.equal(localStorage.getItem('smart-tourism-favorites'), '[]', 'unfavorite persists to localStorage')
+api.toggleFavorite(museum)
+api.toggleFavorite(confuciusTemple)
+assert.deepEqual(JSON.parse(JSON.stringify(api.favoritePlaceIds.value)), [1, 2], 'two different favorites have no duplicates')
+await api.showFavoritePlaces()
+assert.equal(api.showFavoritesOnly.value, true, 'favorites mode is active')
+assert.deepEqual(
+  JSON.parse(JSON.stringify(map.sources.places.data.features.map((feature) => feature.properties.id))),
+  [1, 2],
+  'favorites mode filters the existing places source'
+)
+assert.equal(map.layers['places-heatmap'].source, 'places', 'heatmap continues to reuse filtered places source')
+api.toggleFavorite(museum)
+assert.deepEqual(JSON.parse(JSON.stringify(map.sources.places.data.features.map((feature) => feature.properties.id))), [2], 'unfavorite updates visible favorites')
+api.toggleFavorite(confuciusTemple)
+assert.equal(map.sources.places.data.features.length, 0, 'no favorites clears the places source')
+assert.equal(api.searchMessage.value, '暂无收藏景点', 'empty favorites has a clear message')
+const leaveFavorites = api.searchPlaces()
+assert.equal(api.showFavoritesOnly.value, false, 'normal search exits favorites mode')
+requests.at(-1).resolve({ data: allPlaces })
+await leaveFavorites
+assert.equal(map.sources.places.data.features.length, 3, 'normal search restores regular places data')
 api.toggleRoutePlace(museum)
 assert.equal(api.selectedRoutePlaces.value.length, 1, 'first route place is selected')
 assert.equal(map.sources['route-line'].data.features.length, 0, 'one selected place has no line')
@@ -156,4 +206,33 @@ last.resolve({ data: { type: 'FeatureCollection', features: ['stale'] } })
 await pending
 assert.equal(map.sources.places.data, previous, 'late response does not update removed map')
 assert.equal(map.removed, true)
-console.log('PASS: initialization lock, heatmap visibility/source reuse, route selection/LineString/haversine/clear, duplicate suppression, failure paths, current-area bounds/query behavior, and unmount cancellation')
+
+const restoreStorage = createStorage({
+  'smart-tourism-favorites': JSON.stringify([1, 4, 4, 'invalid'])
+})
+const restoreContext = vm.createContext({
+  ref: value => ({ value }), onMounted() {}, onUnmounted() {},
+  Map: function () {}, NavigationControl: function () {},
+  setWorkerUrl() {}, workerUrl: '', AbortController, localStorage: restoreStorage,
+  axios: { isCancel: () => false, get() {} }
+})
+vm.runInContext(script + '\nthis.restoredFavorites = favoritePlaceIds.value', restoreContext)
+assert.deepEqual(
+  JSON.parse(JSON.stringify(restoreContext.restoredFavorites)),
+  [1, 4],
+  'initialization restores valid unique IDs from localStorage'
+)
+const invalidStorageContext = vm.createContext({
+  ref: value => ({ value }), onMounted() {}, onUnmounted() {},
+  Map: function () {}, NavigationControl: function () {},
+  setWorkerUrl() {}, workerUrl: '', AbortController,
+  localStorage: createStorage({ 'smart-tourism-favorites': '{not-json' }),
+  axios: { isCancel: () => false, get() {} }
+})
+vm.runInContext(script + '\nthis.invalidFavorites = favoritePlaceIds.value', invalidStorageContext)
+assert.deepEqual(
+  JSON.parse(JSON.stringify(invalidStorageContext.invalidFavorites)),
+  [],
+  'invalid localStorage JSON restores as an empty favorites list'
+)
+console.log('PASS: initialization lock, heatmap reuse, route planning, persistent favorites/filtering/empty state, failure paths, current-area bounds/query behavior, and unmount cancellation')

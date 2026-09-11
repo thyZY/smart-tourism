@@ -17,6 +17,22 @@ const selectedCategory = ref('')
 const mapDisplayMode = ref('points')
 const selectedRoutePlaces = ref([])
 const routeDistanceKm = ref(0)
+const favoriteStorageKey = 'smart-tourism-favorites'
+
+const readFavoritePlaceIds = () => {
+  try {
+    const savedIds = JSON.parse(localStorage.getItem(favoriteStorageKey) ?? '[]')
+    if (!Array.isArray(savedIds)) return []
+
+    return [...new Set(savedIds.filter((id) => Number.isInteger(id)))]
+  } catch {
+    return []
+  }
+}
+
+const favoritePlaceIds = ref(readFavoritePlaceIds())
+const showFavoritesOnly = ref(false)
+let allPlacesCache = null
 
 const categories = [
   '博物馆',
@@ -38,6 +54,85 @@ const mapReady = ref(false)
 let requestController = null
 const emptyPlaces = () => ({ type: 'FeatureCollection', features: [] })
 const emptyRoute = () => ({ type: 'FeatureCollection', features: [] })
+
+const persistFavorites = () => {
+  try {
+    localStorage.setItem(favoriteStorageKey, JSON.stringify(favoritePlaceIds.value))
+  } catch {
+    // Storage can be unavailable or full; favorites remain usable for this session.
+  }
+}
+
+const isFavorite = (placeId) => favoritePlaceIds.value.includes(placeId)
+
+const favoriteCollection = () => {
+  const favoriteIds = new Set(favoritePlaceIds.value)
+  const features = (allPlacesCache?.features ?? []).filter(
+    (feature) => favoriteIds.has(feature.properties.id)
+  )
+
+  return { type: 'FeatureCollection', features }
+}
+
+const renderFavoritePlaces = () => {
+  const collection = favoriteCollection()
+  searchResults.value = collection.features
+  map?.getSource('places')?.setData(collection)
+  searchMessage.value = collection.features.length ? '' : '暂无收藏景点'
+}
+
+const toggleFavorite = (feature) => {
+  const placeId = feature?.properties?.id
+  if (placeId == null) return
+
+  favoritePlaceIds.value = isFavorite(placeId)
+    ? favoritePlaceIds.value.filter((id) => id !== placeId)
+    : [...favoritePlaceIds.value, placeId]
+  persistFavorites()
+
+  if (showFavoritesOnly.value) renderFavoritePlaces()
+}
+
+const showFavoritePlaces = async () => {
+  if (!mapReady.value || loading.value) return
+
+  showFavoritesOnly.value = true
+  clearPopup()
+  searchMessage.value = ''
+
+  if (allPlacesCache) {
+    renderFavoritePlaces()
+    return
+  }
+
+  loading.value = true
+  const controller = new AbortController()
+  requestController = controller
+
+  try {
+    const response = await axios.get('http://127.0.0.1:8010/api/places', {
+      signal: controller.signal,
+      timeout: 10000
+    })
+    if (controller.signal.aborted || !map) return
+
+    allPlacesCache = response.data
+    renderFavoritePlaces()
+  } catch (error) {
+    if (controller.signal.aborted || axios.isCancel(error)) return
+
+    searchResults.value = []
+    map?.getSource('places')?.setData(emptyPlaces())
+    searchMessage.value = error.response
+      ? '景点查询失败，请稍后重试'
+      : '无法连接后端服务'
+  } finally {
+    if (requestController === controller) {
+      requestController = null
+      loading.value = false
+    }
+  }
+}
 
 const calculateDistanceKm = (from, to) => {
   const [fromLng, fromLat] = from
@@ -124,6 +219,17 @@ const showPopup = (feature) => {
     line.textContent = text
     content.append(line)
   }
+  const favoriteButton = document.createElement('button')
+  const updateFavoriteButton = () => {
+    favoriteButton.textContent = isFavorite(feature.properties.id) ? '取消收藏' : '收藏'
+  }
+  updateFavoriteButton()
+  favoriteButton.addEventListener('click', (event) => {
+    event.stopPropagation()
+    toggleFavorite(feature)
+    updateFavoriteButton()
+  })
+  content.append(favoriteButton)
   searchPopup = new Popup().setLngLat(feature.geometry.coordinates)
     .setDOMContent(content).addTo(map)
 }
@@ -198,6 +304,7 @@ const setMapDisplayMode = (mode) => {
 const loadPlaces = async (nearby = false, currentArea = false) => {
   if (!mapReady.value || loading.value) return
 
+  showFavoritesOnly.value = false
   loading.value = true
   clearPopup()
   searchMessage.value = ''
@@ -250,6 +357,9 @@ const loadPlaces = async (nearby = false, currentArea = false) => {
 
     const features = response.data.features
 
+    if (!nearby && !currentArea && !q && !selectedCategory.value) {
+      allPlacesCache = response.data
+    }
     searchResults.value = features
     map.getSource('places').setData(response.data)
 
@@ -292,6 +402,7 @@ const loadPlaces = async (nearby = false, currentArea = false) => {
 }
 
 const selectCategory = async (category) => {
+  showFavoritesOnly.value = false
   selectedCategory.value = category
   await loadPlaces(false)
 }
@@ -461,6 +572,15 @@ onUnmounted(() => {
     </button>
 
     <button
+      class="favorites-button"
+      :class="{ active: showFavoritesOnly }"
+      :disabled="loading || !mapReady"
+      @click="showFavoritePlaces"
+    >
+      我的收藏 ({{ favoritePlaceIds.length }})
+    </button>
+
+    <button
       @click="searchCurrentArea"
       :disabled="loading || !mapReady"
     >
@@ -511,6 +631,15 @@ onUnmounted(() => {
       ]"
       @click="toggleRoutePlace(feature); focusResult(feature)"
     >
+      <button
+        class="favorite-toggle"
+        type="button"
+        :aria-label="isFavorite(feature.properties.id) ? '取消收藏' : '收藏'"
+        :title="isFavorite(feature.properties.id) ? '取消收藏' : '收藏'"
+        @click.stop="toggleFavorite(feature)"
+      >
+        {{ isFavorite(feature.properties.id) ? '★' : '☆' }}
+      </button>
       <strong>{{ feature.properties.name }}</strong>
       <div>{{ feature.properties.category }}</div>
     </div>
@@ -611,6 +740,30 @@ body {
   background: #f5f5f5;
 }
 
+.favorites-button {
+  position: absolute;
+  top: 20px;
+  left: 460px;
+  z-index: 10;
+  padding: 10px 16px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: white;
+  color: #222;
+  cursor: pointer;
+}
+
+.favorites-button:hover:not(:disabled),
+.favorites-button.active {
+  background: #e8f0fe;
+  border-color: #8ab4f8;
+}
+
+.favorites-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .map-display-control {
   position: absolute;
   top: 20px;
@@ -674,6 +827,7 @@ body {
 }
 
 .result-item {
+  position: relative;
   padding: 10px 12px;
   border-bottom: 1px solid #eee;
   cursor: pointer;
@@ -695,6 +849,19 @@ body {
 .result-item-route-selected {
   border-left: 4px solid #2563eb;
   padding-left: 8px;
+}
+
+.favorite-toggle {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #d97706;
+  cursor: pointer;
+  font-size: 24px;
+  line-height: 1;
 }
 
 .category-filter {
