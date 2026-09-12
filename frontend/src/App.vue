@@ -7,6 +7,7 @@ import RoutePanel from './components/RoutePanel.vue'
 import PlaceDetailPanel from './components/PlaceDetailPanel.vue'
 import ThemePanel from './components/ThemePanel.vue'
 import CulturalLinePanel from './components/CulturalLinePanel.vue'
+import SpatialAnalysisPanel from './components/SpatialAnalysisPanel.vue'
 import themes from './data/themes.js'
 import culturalLines from './data/culturalLines.js'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -69,6 +70,7 @@ const categories = [
 
 let map = null
 let searchPopup = null
+let gridPopup = null
 
 const loading = ref(false)
 const mapReady = ref(false)
@@ -76,6 +78,107 @@ let requestController = null
 const emptyPlaces = () => ({ type: 'FeatureCollection', features: [] })
 const emptyRoute = () => ({ type: 'FeatureCollection', features: [] })
 const emptyCulturalLine = () => ({ type: 'FeatureCollection', features: [] })
+const emptyTourismGrid = () => ({ type: 'FeatureCollection', features: [] })
+const tourismGrid = ref(emptyTourismGrid())
+const gridAnalysisVisible = ref(false)
+const gridCellSize = 0.02
+
+// A lightweight degree-based grid for comparison, not an equal-area 2 km grid.
+const gridCellOrigin = (value) => Number((Math.floor(value / gridCellSize) * gridCellSize).toFixed(6))
+
+const richnessLevel = (poiCount, categoryCount) => {
+  if (poiCount >= 5 || (poiCount >= 4 && categoryCount >= 3)) return 'high'
+  if (poiCount >= 3 || categoryCount >= 2) return 'medium'
+  return 'low'
+}
+
+const buildTourismGrid = (features) => {
+  const cells = {}
+
+  for (const feature of features) {
+    const [lng, lat] = feature.geometry?.coordinates ?? []
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue
+
+    const west = gridCellOrigin(lng)
+    const south = gridCellOrigin(lat)
+    const gridId = `${west}:${south}`
+    cells[gridId] ??= { gridId, west, south, features: [] }
+    cells[gridId].features.push(feature)
+  }
+
+  return {
+    type: 'FeatureCollection',
+    features: Object.values(cells).map((cell) => {
+      const poiCount = cell.features.length
+      const categories = [...new Set(cell.features.map(
+        (feature) => feature.properties.category
+      ))].filter(Boolean).sort()
+      const east = Number((cell.west + gridCellSize).toFixed(6))
+      const north = Number((cell.south + gridCellSize).toFixed(6))
+
+      return {
+        type: 'Feature',
+        properties: {
+          grid_id: cell.gridId,
+          poi_count: poiCount,
+          category_count: categories.length,
+          categories,
+          place_names: cell.features.map((feature) => feature.properties.name),
+          richness_level: richnessLevel(poiCount, categories.length)
+        },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[
+            [cell.west, cell.south],
+            [east, cell.south],
+            [east, north],
+            [cell.west, north],
+            [cell.west, cell.south]
+          ]]
+        }
+      }
+    })
+  }
+}
+
+const refreshTourismGrid = () => {
+  tourismGrid.value = buildTourismGrid(allPlacesCache?.features ?? [])
+  map?.getSource('tourism-grid')?.setData(tourismGrid.value)
+}
+
+const clearGridPopup = () => {
+  gridPopup?.remove()
+  gridPopup = null
+}
+
+const setGridAnalysisVisible = (visible) => {
+  if (!map?.getLayer('tourism-grid-fill') || !map.getLayer('tourism-grid-outline')) return
+
+  if (visible) refreshTourismGrid()
+  gridAnalysisVisible.value = visible
+  map.setLayoutProperty('tourism-grid-fill', 'visibility', visible ? 'visible' : 'none')
+  map.setLayoutProperty('tourism-grid-outline', 'visibility', visible ? 'visible' : 'none')
+  if (!visible) clearGridPopup()
+}
+
+const showGridPopup = (feature, lngLat) => {
+  clearGridPopup()
+  const content = document.createElement('div')
+  const title = document.createElement('strong')
+  title.textContent = '旅游资源格网'
+  content.append(title)
+  const details = [
+    `景点数量：${feature.properties.poi_count}`,
+    `类型数量：${feature.properties.category_count}`,
+    `包含景点：${feature.properties.place_names.join('、')}`
+  ]
+  details.forEach((text) => {
+    const line = document.createElement('div')
+    line.textContent = text
+    content.append(line)
+  })
+  gridPopup = new Popup().setLngLat(lngLat).setDOMContent(content).addTo(map)
+}
 
 const persistFavorites = () => {
   try {
@@ -140,6 +243,7 @@ const showFavoritePlaces = async () => {
     if (controller.signal.aborted || !map) return
 
     allPlacesCache = response.data
+    refreshTourismGrid()
     renderFavoritePlaces()
   } catch (error) {
     if (controller.signal.aborted || axios.isCancel(error)) return
@@ -466,6 +570,7 @@ const loadPlaces = async (nearby = false, currentArea = false) => {
 
     if (!nearby && !currentArea && !q && !selectedCategory.value) {
       allPlacesCache = response.data
+      refreshTourismGrid()
     }
     searchResults.value = features
     map.getSource('places').setData(response.data)
@@ -553,6 +658,7 @@ onMounted(() => {
     map.addSource('places', { type: 'geojson', data: emptyPlaces() })
     map.addSource('route-line', { type: 'geojson', data: emptyRoute() })
     map.addSource('cultural-line', { type: 'geojson', data: emptyCulturalLine() })
+    map.addSource('tourism-grid', { type: 'geojson', data: emptyTourismGrid() })
     map.addLayer({
       id: 'places-points',
       type: 'circle',
@@ -618,7 +724,35 @@ onMounted(() => {
         'line-dasharray': [2, 1]
       }
     })
+    map.addLayer({
+      id: 'tourism-grid-fill',
+      type: 'fill',
+      source: 'tourism-grid',
+      layout: { visibility: 'none' },
+      paint: {
+        'fill-color': [
+          'step', ['get', 'poi_count'],
+          '#dbeafe',
+          3, '#93c5fd',
+          5, '#2563eb'
+        ],
+        'fill-opacity': 0.38
+      }
+    })
+    map.addLayer({
+      id: 'tourism-grid-outline',
+      type: 'line',
+      source: 'tourism-grid',
+      layout: { visibility: 'none' },
+      paint: {
+        'line-color': '#1d4ed8',
+        'line-width': 1.5,
+        'line-opacity': 0.8
+      }
+    })
     map.on('click', 'places-points', (e) => {
+      if (gridAnalysisVisible.value) return
+
       const feature = e.features?.[0]
 
       if (!feature) return
@@ -631,6 +765,16 @@ onMounted(() => {
     map.on('mouseleave', 'places-points', () => {
       map.getCanvas().style.cursor = ''
     })
+    map.on('click', 'tourism-grid-fill', (event) => {
+      const feature = event.features?.[0]
+      if (feature) showGridPopup(feature, event.lngLat)
+    })
+    map.on('mouseenter', 'tourism-grid-fill', () => {
+      map.getCanvas().style.cursor = 'pointer'
+    })
+    map.on('mouseleave', 'tourism-grid-fill', () => {
+      map.getCanvas().style.cursor = ''
+    })
     mapReady.value = true
     void searchPlaces()
   })
@@ -640,6 +784,7 @@ onUnmounted(() => {
   mapReady.value = false
   requestController?.abort()
   clearPopup()
+  clearGridPopup()
   map?.remove()
   map = null
 })
@@ -672,6 +817,12 @@ onUnmounted(() => {
       :selected-line="selectedCulturalLine"
       @select="selectCulturalLine"
       @clear="clearCulturalLine"
+    />
+    <SpatialAnalysisPanel
+      :grid-features="tourismGrid.features"
+      :visible="gridAnalysisVisible"
+      @show="setGridAnalysisVisible(true)"
+      @hide="setGridAnalysisVisible(false)"
     />
 
     <div class="map-display-control" role="group" aria-label="地图显示模式">
