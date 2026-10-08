@@ -50,7 +50,7 @@ const context = vm.createContext({
     get: (url, options) => new Promise((resolve, reject) => requests.push({ url, options, resolve, reject }))
   }
 })
-vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, selectTheme, selectedTheme, focusResult, closePlaceDetail, toggleRoutePlace, clearRoute, toggleFavorite, showFavoritePlaces, isFavorite, favoritePlaceIds, showFavoritesOnly, selectedRoutePlaces, routeDistanceKm, selectedPlace, selectedPlaceId, placeDetails, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
+vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, selectTheme, selectedTheme, focusResult, closePlaceDetail, toggleRoutePlace, clearRoute, toggleFavorite, showFavoritePlaces, isFavorite, favoritePlaceIds, showFavoritesOnly, selectedRoutePlaces, routeDistanceKm, selectedPlace, selectedPlaceId, tourismCard, tourismLoading, tourismError, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
 const api = context.api
 const empty = { type: 'FeatureCollection', features: [] }
 const tick = () => new Promise(resolve => setImmediate(resolve))
@@ -160,7 +160,16 @@ await allPlacesRequest
 api.focusResult(museum)
 assert.equal(api.selectedPlace.value, museum, 'list selection stores the selected place feature')
 assert.equal(api.selectedPlace.value.properties.name, '南京博物院', 'detail panel receives the selected place name')
-assert.equal(api.placeDetails[1].rating, 4.8, 'selected place uses the static detail configuration')
+assert.equal(api.tourismLoading.value, true, 'details start loading after selection')
+const detailRequest = requests.at(-1)
+assert.equal(detailRequest.url, 'http://127.0.0.1:8010/api/tourism/places/1')
+detailRequest.resolve({ data: {
+  id: 1, name: '南京博物院', visit_duration: 150,
+  indoor: true, tags: ['历史', '展览']
+} })
+await tick()
+assert.equal(api.tourismCard.value.visit_duration, 150, 'database-backed tourism card populates selected place')
+assert.equal(api.tourismLoading.value, false, 'details finish loading')
 assert.equal(api.isFavorite(museum.properties.id), false, 'detail favorite state starts in sync')
 api.toggleFavorite(museum)
 assert.equal(api.isFavorite(museum.properties.id), true, 'detail favorite state updates through existing favorite logic')
@@ -169,6 +178,7 @@ assert.equal(api.selectedRoutePlaces.value.length, 1, 'detail route action uses 
 api.closePlaceDetail()
 assert.equal(api.selectedPlace.value, null, 'closing detail clears selected place')
 assert.equal(api.selectedPlaceId.value, null, 'closing detail clears selected place highlight')
+assert.equal(api.tourismCard.value, null, 'closing detail clears fetched tourism card')
 api.toggleFavorite(museum)
 api.toggleRoutePlace(museum)
 map.handlers['click:places-points']({ features: [museum] })
