@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "description": "Tourism semantic metadata template. Existing deployment can progressively fill these fields.",
+  "examples": [
+    {
+      "name": "南京博物院",
+      "visit_duration": 180,
+      "indoor": true,
+      "tags": ["历史", "文化", "展览", "亲子"],
+      "description": "南京重要历史艺术博物馆，适合系统化了解历史文化。
+      ",
+      "best_time": "全年"
+    },
+    {
+      "name": "夫子庙",
+      "visit_duration": 120,
+      "indoor": false,
+      "tags": ["历史", "夜游", "美食"],
+      "description": "南京传统文化街区，适合结合城市文化体验游览。",
+      "best_time": "夜间及全年"
+    }
+  ]
+}
