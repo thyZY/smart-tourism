@@ -1,0 +1,142 @@
+"""Two-POI road routing via Valhalla (prototype; public demo is not production SLA).
+
+Trust boundary: POI IDs always resolve to existing PostGIS WGS84 coordinates.
+External routing does not receive credentials, user messages, or database connection info.
+"""
+import json
+import os
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+from typing import Literal
+
+from .db import get_db_connection
+
+router = APIRouter(prefix="/api/routing", tags=["road-routing"])
+
+
+class RoadRouteRequest(BaseModel):
+    from_id: int = Field(ge=1)
+    to_id: int = Field(ge=1)
+    mode: Literal["pedestrian"] = "pedestrian"
+
+
+def _decode_number(polyline, index):
+    result = 0
+    shift = 0
+    while True:
+        if index >= len(polyline) or shift > 35:
+            raise ValueError("Incomplete or invalid encoded route shape")
+        byte = ord(polyline[index]) - 63
+        index += 1
+        if byte < 0 or byte > 63:
+            raise ValueError("Invalid encoded route character")
+        result |= (byte & 0x1f) << shift
+        if byte < 0x20:
+            return ((result >> 1) ^ -(result & 1)), index
+        shift += 5
+
+
+def decode_polyline6(shape):
+    """Valhalla coordinates encode lat-first with 6 decimal places; GeoJSON is lon-first."""
+    if not isinstance(shape, str) or not shape:
+        raise ValueError("Empty route geometry")
+    coords = []
+    lat = lon = index = 0
+    while index < len(shape):
+        dlat, index = _decode_number(shape, index)
+        dlon, index = _decode_number(shape, index)
+        lat += dlat
+        lon += dlon
+        if not -90000000 <= lat <= 90000000 or not -180000000 <= lon <= 180000000:
+            raise ValueError("Invalid decoded coordinate")
+        coords.append([lon / 1_000_000, lat / 1_000_000])
+        if len(coords) > 100000:
+            raise ValueError("Route geometry too large")
+    if len(coords) < 2:
+        raise ValueError("Route must contain at least two coordinates")
+    return coords
+
+
+def load_places(from_id, to_id):
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT id, name, ST_X(geom), ST_Y(geom) "
+                "FROM places WHERE id = ANY(%s)", ([from_id, to_id],)
+            )
+            rows = cursor.fetchall()
+    finally:
+        conn.close()
+    return {row[0]: {"id": row[0], "name": row[1], "lon": row[2], "lat": row[3]} for row in rows}
+
+
+def request_valhalla(first, second, *, opener=urlopen):
+    url = os.getenv("VALHALLA_ROUTE_URL", "https://valhalla1.openstreetmap.de/route")
+    body = json.dumps({
+        "locations": [
+            {"lat": first["lat"], "lon": first["lon"]},
+            {"lat": second["lat"], "lon": second["lon"]},
+        ],
+        "costing": "pedestrian",
+        "units": "kilometers",
+        "directions_type": "none",
+    }).encode("utf-8")
+    request = Request(
+        url, data=body, method="POST",
+        headers={"Content-Type": "application/json", "X-Client-Id": "smart-tourism-prototype"},
+    )
+    with opener(request, timeout=15) as response:
+        return json.load(response)
+
+
+def build_road_feature(first, second, response):
+    trip = response.get("trip")
+    if not isinstance(trip, dict):
+        raise ValueError("Provider returned no trip")
+    summary = trip.get("summary") or {}
+    legs = trip.get("legs") or []
+    length = summary.get("length")
+    time = summary.get("time")
+    if (not isinstance(length, (float, int)) or length <= 0
+            or not isinstance(time, (float, int)) or time <= 0 or not legs):
+        raise ValueError("Provider returned no valid route summary")
+    coordinates = []
+    for leg in legs:
+        points = decode_polyline6(leg["shape"])
+        coordinates.extend(points if not coordinates else points[1:])
+    if len(coordinates) < 2:
+        raise ValueError("Provider returned incomplete route")
+    return {
+        "type": "Feature",
+        "properties": {
+            "from_id": first["id"], "to_id": second["id"],
+            "from_name": first["name"], "to_name": second["name"],
+            "mode": "pedestrian",
+            "distance_km": round(float(length), 3),
+            "duration_minutes": round(float(time) / 60, 1),
+            "provider": "valhalla_osm",
+            "limitations": "步行距离与时间为OSM路网估算，非实时导航；起终点可能吸附至道路。",
+        },
+        "geometry": {"type": "LineString", "coordinates": coordinates},
+    }
+
+
+@router.post("/route")
+def route_between_places(body: RoadRouteRequest):
+    if body.from_id == body.to_id:
+        raise HTTPException(status_code=422, detail="请选两个不同的景点")
+    places = load_places(body.from_id, body.to_id)
+    if body.from_id not in places or body.to_id not in places:
+        raise HTTPException(status_code=404, detail="数据库中找不到对应景点")
+    first, second = places[body.from_id], places[body.to_id]
+    try:
+        response = request_valhalla(first, second)
+        return build_road_feature(first, second, response)
+    except (HTTPError, URLError, OSError, TimeoutError) as exc:
+        raise HTTPException(status_code=502, detail="道路寻路服务暂不可用，请稍后重试；现有直线预览仍可使用") from exc
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(status_code=502, detail="道路寻路服务未返回有效路线，请检查路网覆盖") from exc
