@@ -643,7 +643,7 @@ onUnmounted(() => {
 <template>
   <div class="map-wrapper">
     <StatisticsPanel />
-    <NaturalSearchPanel :map-ready="mapReady" :center="naturalSearchCenter" @results="applyNaturalResults" />
+    <NaturalSearchPanel :map-ready="mapReady" :center="naturalSearchCenter" @results="applyNaturalResults" @route="applyItineraryPreview" />
     <ItineraryPreviewPanel :map-ready="mapReady" :center="naturalSearchCenter" @route="applyItineraryPreview" />
     <RoutePanel
       :places="selectedRoutePlaces"
