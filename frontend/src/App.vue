@@ -588,6 +588,10 @@ onMounted(() => {
     map.on('mouseleave', 'places-points', () => {
       map.getCanvas().style.cursor = ''
     })
+    map.on('moveend', () => {
+      const center = map.getCenter()
+      naturalSearchCenter.value = { lng: center.lng, lat: center.lat }
+    })
     mapReady.value = true
     void searchPlaces()
   })
