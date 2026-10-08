@@ -1,7 +1,5 @@
 """Trust-boundary between an external language model and grounded POI queries."""
-import re
-
-from ..natural_language import CATEGORY_RULES, parse_intent
+from ..natural_language import parse_intent
 from .deepseek_client import DeepSeekClient
 
 ALLOWED_CATEGORIES = (
@@ -55,10 +53,11 @@ def normalize_model_intent(raw, query):
         categories = local["categories"]
     categories = [item for item in categories if item not in avoid]
     near = raw.get("nearby")
-    nearby = near if isinstance(near, bool) else local["nearby"]
+    # Never let model output override an explicit nearby request in user text.
+    nearby = local["nearby"] or (near if isinstance(near, bool) else False)
     radius = raw.get("radius_km")
     radius_m = local["radius_m"]
-    if type(radius) in (int, float) and 0.1 <= radius <= 30:
+    if radius_m is None and type(radius) in (int, float) and 0.1 <= radius <= 30:
         radius_m = round(radius * 1000)
     if nearby and radius_m is None:
         radius_m = 5000
