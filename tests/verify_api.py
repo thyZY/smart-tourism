@@ -120,3 +120,28 @@ assert all(item['properties']['category'] == '博物馆' for item in preview['st
 assert preview['between_stops_direct_km'] >= 0
 assert preview['limitations']
 print('PASS: itinerary preview uses grounded POIs and labels straight-line limitations')
+
+
+# Tourism metadata integration: run scripts/import_tourism_metadata.py --apply first.
+from urllib.error import HTTPError
+
+museum_id = next(
+    f['properties']['id'] for f in all_places if f['properties']['name'] == '南京博物院'
+)
+with urlopen(f'http://127.0.0.1:8010/api/tourism/places/{museum_id}', timeout=10) as response:
+    assert response.status == 200
+    museum_card = json.load(response)
+assert museum_card['id'] == museum_id
+assert museum_card['name'] == '南京博物院'
+assert museum_card['visit_duration'] == 150
+assert museum_card['indoor'] is True
+assert '历史' in museum_card['tags']
+assert museum_card['description']
+assert museum_card['best_time'] == ''
+
+try:
+    urlopen('http://127.0.0.1:8010/api/tourism/places/9999999', timeout=10)
+    raise AssertionError('Missing POI should return HTTP 404')
+except HTTPError as exc:
+    assert exc.code == 404
+print('PASS: tourism API returns migrated POI metadata and 404 for missing place')
