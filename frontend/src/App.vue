@@ -3,6 +3,7 @@ import axios from 'axios'
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { Map, NavigationControl, Popup, LngLatBounds, setWorkerUrl } from 'maplibre-gl'
 import StatisticsPanel from './components/StatisticsPanel.vue'
+import NaturalSearchPanel from './components/NaturalSearchPanel.vue'
 import RoutePanel from './components/RoutePanel.vue'
 import PlaceDetailPanel from './components/PlaceDetailPanel.vue'
 import ThemePanel from './components/ThemePanel.vue'
@@ -15,6 +16,7 @@ const mapContainer = ref(null)
 const searchQuery = ref('')
 const searchMessage = ref('')
 const searchResults = ref([])
+const naturalSearchCenter = ref({ lng: 118.7969, lat: 32.0603 })
 const selectedPlaceId = ref(null)
 const selectedPlace = ref(null)
 const selectedCategory = ref('')
@@ -356,6 +358,18 @@ const frameResults = (features) => {
   }
 }
 
+const applyNaturalResults = (collection) => {
+  if (!map || !mapReady.value || loading.value) return
+  exitThemeMode()
+  showFavoritesOnly.value = false
+  clearPopup()
+  closePlaceDetail()
+  searchResults.value = collection.features ?? []
+  map.getSource('places')?.setData(collection)
+  searchMessage.value = searchResults.value.length ? '' : '没有找到符合条件的已收录景点'
+  if (searchResults.value.length) frameResults(searchResults.value)
+}
+
 const setMapDisplayMode = (mode) => {
   if (!map?.getLayer('places-points') || !map.getLayer('places-heatmap')) return
 
@@ -377,6 +391,7 @@ const loadPlaces = async (nearby = false, currentArea = false) => {
 
   const q = searchQuery.value.trim()
   const center = map.getCenter()
+  naturalSearchCenter.value = { lng: center.lng, lat: center.lat }
   const bounds = currentArea ? map.getBounds() : null
 
   const controller = new AbortController()
@@ -590,6 +605,7 @@ onUnmounted(() => {
 <template>
   <div class="map-wrapper">
     <StatisticsPanel />
+    <NaturalSearchPanel :map-ready="mapReady" :center="naturalSearchCenter" @results="applyNaturalResults" />
     <RoutePanel
       :places="selectedRoutePlaces"
       :distance-km="routeDistanceKm"
