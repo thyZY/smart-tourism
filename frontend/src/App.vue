@@ -4,6 +4,7 @@ import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { Map, NavigationControl, Popup, LngLatBounds, setWorkerUrl } from 'maplibre-gl'
 import StatisticsPanel from './components/StatisticsPanel.vue'
 import NaturalSearchPanel from './components/NaturalSearchPanel.vue'
+import ItineraryPreviewPanel from './components/ItineraryPreviewPanel.vue'
 import RoutePanel from './components/RoutePanel.vue'
 import PlaceDetailPanel from './components/PlaceDetailPanel.vue'
 import ThemePanel from './components/ThemePanel.vue'
@@ -358,6 +359,14 @@ const frameResults = (features) => {
   }
 }
 
+const applyItineraryPreview = (stops) => {
+  if (!mapReady.value || !map || loading.value) return
+  exitThemeMode()
+  selectedRoutePlaces.value = Array.isArray(stops) ? [...stops] : []
+  updateRoute()
+  if (selectedRoutePlaces.value.length) frameResults(selectedRoutePlaces.value)
+}
+
 const applyNaturalResults = (collection) => {
   if (!map || !mapReady.value || loading.value) return
   exitThemeMode()
@@ -610,6 +619,7 @@ onUnmounted(() => {
   <div class="map-wrapper">
     <StatisticsPanel />
     <NaturalSearchPanel :map-ready="mapReady" :center="naturalSearchCenter" @results="applyNaturalResults" />
+    <ItineraryPreviewPanel :map-ready="mapReady" :center="naturalSearchCenter" @route="applyItineraryPreview" />
     <RoutePanel
       :places="selectedRoutePlaces"
       :distance-km="routeDistanceKm"

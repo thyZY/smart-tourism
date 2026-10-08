@@ -285,3 +285,32 @@ def natural_place_search(query: str, lng: float | None = None, lat: float | None
         "matched_categories": list(intent.categories),
         "places": {"type": "FeatureCollection", "features": features},
     }
+
+
+@app.get("/api/places/itinerary-preview")
+def itinerary_preview(lng: float, lat: float, max_stops: int = 4, query: str = ""):
+    """A limited straight-line POI preview; NOT a real navigation itinerary."""
+    from fastapi import HTTPException
+    from .natural_language import parse_intent
+    from .itinerary import build_preview
+
+    if not -180 <= lng <= 180 or not -90 <= lat <= 90:
+        raise HTTPException(status_code=422, detail="地图中心坐标无效")
+    if not 2 <= max_stops <= 6:
+        raise HTTPException(status_code=422, detail="站点数需要在2到6之间")
+    if len(query) > 300:
+        raise HTTPException(status_code=422, detail="查询不得超过300字")
+    if query.strip():
+        search = natural_place_search(query=query, lng=lng, lat=lat)
+        features = search["places"]["features"]
+        explanation = search["explanation"]
+    else:
+        features = get_places()["features"]
+        explanation = "从已收录景点中按距离选取候选站点"
+    result = build_preview(features=features, origin=(lng, lat), max_stops=max_stops)
+    return {
+        **result,
+        "origin": {"lng": lng, "lat": lat},
+        "explanation": explanation,
+        "candidate_count": len(features),
+    }

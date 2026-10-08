@@ -86,3 +86,17 @@ npm run build
     npm run build
 
 后面的 API 验证需要本地数据库和后端处于运行状态。
+
+## 景点顺序预览（开发分支）
+
+新增可折叠的「景点顺序预览（直线距离）」面板，输入可选的景点分类需求、选择2～6个站点，后端先用已有PostGIS记录过滤候选，然后采用就近贪心策略排序，并通过现有路线面板展示。所有数字是地理直线距离估算；**不提供真实路网/导航、行程用时、开放时间校验或全局最优保证**。地图中心为起点，不是GPS。
+
+需要在本地同时运行数据库、后端、前端，执行下面的回归检查（新提交尚未在Windows本机执行）：
+
+    .\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"
+    .\.venv\Scripts\python.exe tests/verify_api.py
+    node tests/frontend-workflow.mjs
+    cd frontend
+    npm run build
+
+最后在网页展开预览面板，生成3站历史文化景点顺序并检查地图连线。确认无误后再考虑合并；不要把此版本描述成GPT/AI自动行程规划。
