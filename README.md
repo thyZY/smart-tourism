@@ -209,3 +209,64 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8010/api/ai/tourism-search" -Method Pos
 `itinerary_preview.stops`。无 Key 时 `mode` 必须为 `rule_based`；
 浏览器在“查找”后应出现对应真实地图点位，并可点击显示路线预览。
 所有源字段、坐标都应可追溯至当前 PostGIS 的 `places` 表。
+
+## 第五阶段：道路路网寻路 MVP（仅两站步行）
+
+已增加 `POST /api/routing/route`，由数据库中真实的两个景点 ID 查询 WGS84 坐标，
+再通过 Valhalla 基于 OpenStreetMap 路网计算步行道路折线、距离和预计耗时。
+地图仍保持原有蓝色直线预览；在「我的路线」面板**恰好选择两个景点**后，
+可以点击「计算真实道路步行路线」，成功后改为绿色道路折线并展示时长。
+增删景点会立即清除旧道路结果，避免错误沿用。
+寻路失败会显示明确错误并保留蓝色直线预览；三站以上目前仍然使用直线预览。
+
+### 路由服务及环境变量
+
+默认开发验证服务为公共演示节点 `https://valhalla1.openstreetmap.de/route`。
+该节点不提供稳定性或服务等级保证，仅用于少量实验验证，不能直接作为
+生产环境正式依赖。可在本地 `backend/.env` 覆盖（不要把密钥或个人配置入库）：
+
+```dotenv
+VALHALLA_ROUTE_URL=https://valhalla1.openstreetmap.de/route
+```
+
+后续自建 Valhalla 可将其改为受信任的自有服务 URL。
+接口只支持 `mode=pedestrian`，不需要 DeepSeek Key。
+外部路由服务只收到两个 POI 坐标，不收到用户聊天文字或数据库账号。
+Valhalla 使用的 encoded polyline 为**六位小数精度**；代码转换为
+GeoJSON 的 `[longitude, latitude]` 顺序供 MapLibre 使用。
+
+### 本地更新和验收
+
+```powershell
+cd D:\smart-tourism
+git fetch origin
+git switch feat/poi-tourism-metadata-20261008
+git pull --ff-only
+
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_road_routing.py"
+node tests/frontend-workflow.mjs
+cd frontend
+npm run build
+```
+
+分别启动本地后端（端口8010）与前端（端口5173）后，打开
+`http://localhost:5173`。在搜索列表选择“南京博物院”“南京总统府”
+并分别加入「我的路线」，然后点击「计算真实道路步行路线」；
+期望能看到绿色道路折线、道路距离和预计步行时间。用户已在本机用相同两个
+数据库 POI 坐标通过公开 Valhalla 实测成功（当次返回0.908km / 11.3分钟），
+但公共地图数据与路线服务可能更新，**不要把该数值写死在自动化测试中**。
+
+还可从 PowerShell 调用后端接口（请按数据库内实际 ID 修改）：
+
+```powershell
+$pois = (Invoke-RestMethod "http://127.0.0.1:8010/api/places").features
+$a = $pois | Where-Object { $_.properties.name -eq "南京博物院" } | Select-Object -First 1
+$b = $pois | Where-Object { $_.properties.name -eq "南京总统府" } | Select-Object -First 1
+$body = @{from_id=$a.properties.id;to_id=$b.properties.id;mode="pedestrian"} | ConvertTo-Json
+Invoke-RestMethod -Uri "http://127.0.0.1:8010/api/routing/route" -Method Post -ContentType "application/json" -Body $body
+```
+
+已新增单元测试使用模拟外部 HTTP 响应，不需要 API Key 或公网服务；
+但真实公网端点、Windows 前端构建仍需本机执行和验收。
+此路线提供的是基于 OSM 的**非实时步行估算**，尚无入口点校正、
+道路无障碍/坡度筛选、多站道路距离矩阵，也不能视为实时导航。
