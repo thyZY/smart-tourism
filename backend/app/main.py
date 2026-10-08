@@ -2,9 +2,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .db import get_db_connection
 from .tourism_routes import router as tourism_router
+from .ai.router import router as ai_router
 
 app = FastAPI()
 app.include_router(tourism_router)
+app.include_router(ai_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
