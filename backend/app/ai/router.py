@@ -71,7 +71,12 @@ async def tourism_search(request: TourismSearchRequest):
         raise HTTPException(status_code=422, detail="请输入旅游需求")
     if (request.lng is None) != (request.lat is None):
         raise HTTPException(status_code=422, detail="地图中心经纬度必须同时提供")
-    intent, mode = await parse_tourism_intent(query)
+    try:
+        # Validate explicit radius before any paid provider request.
+        parsed = parse_intent(query)
+        intent, mode = await parse_tourism_intent(query)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     origin = None if request.lng is None else (request.lng, request.lat)
     if intent["nearby"] and origin is None:
         raise HTTPException(status_code=422, detail="附近查询需要地图中心坐标")
@@ -84,7 +89,7 @@ async def tourism_search(request: TourismSearchRequest):
         build_preview(features, origin=origin, max_stops=request.max_stops)
         if origin is not None and features else None
     )
-    limitations = list(parse_intent(query).unsupported)
+    limitations = list(parsed.unsupported)
     if intent["walking_level"] == "low":
         limitations.append("没有道路网络，无法保证少走路")
     if intent["duration_days"]:
