@@ -106,3 +106,17 @@ assert all(f['properties']['category'] == '博物馆' for f in nearby_museums)
 assert all(0 <= f['properties']['distance_km'] <= 5 for f in nearby_museums)
 
 print('PASS: statistics, all /places q/category/bbox combinations, and nearby category filtering')
+
+
+# New preview endpoint: integration coverage against the running 40-POI API.
+with urlopen('http://127.0.0.1:8010/api/places/itinerary-preview?' + urlencode({
+    'lng': 118.7921, 'lat': 32.0407, 'max_stops': 3, 'query': '博物馆'
+}), timeout=10) as response:
+    assert response.status == 200
+    preview = json.load(response)
+assert preview['method'] == 'greedy_straight_line_proximity'
+assert len(preview['stops']) == 3
+assert all(item['properties']['category'] == '博物馆' for item in preview['stops'])
+assert preview['between_stops_direct_km'] >= 0
+assert preview['limitations']
+print('PASS: itinerary preview uses grounded POIs and labels straight-line limitations')
