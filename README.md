@@ -66,3 +66,23 @@ npm run build
 
 数据库验证在事务内创建独立 schema，执行 schema/seed 两次后回滚；不会修改
 现有 places 数据。需要当前数据库角色有 CREATE SCHEMA 权限，且已安装 PostGIS。
+
+## 自然语言景点检索（规则版 MVP）
+
+左下角「一句话找景点」支持「附近5公里的博物馆」「南京历史文化景点」等有限规则。解析分类与半径后，查询现有 PostGIS 数据，并在地图显示结果。
+
+- 这是规则检索，尚未接入 GPT 或其他大模型，不声称具备真正的 AI 行程规划。
+- 「附近」指地图中心位置而不是 GPS 实时位置；默认半径5公里。
+- 预算、少走路、行程、开放时间等未实现的条件会明确说明没有参与检索。
+- 景点范围只覆盖项目已收录 POI（当前40条）；路线连线并非道路导航。
+- 此功能不需要密钥，也不把输入传给第三方模型。
+
+验证：在项目根目录运行以下命令：
+
+    .\.venv\Scripts\python.exe -m unittest discover -s tests -p test_natural_language.py
+    .\.venv\Scripts\python.exe tests/verify_api.py
+    node tests/frontend-workflow.mjs
+    cd frontend
+    npm run build
+
+后面的 API 验证需要本地数据库和后端处于运行状态。
