@@ -1,46 +1,41 @@
-"""Database access helpers for tourism metadata.
+"""Read tourism attributes from the *actual* places table.
 
-This module isolates SQL access from FastAPI routes. It is intentionally
-small so the existing spatial endpoints remain unchanged while tourism
-attributes are introduced incrementally.
+Using to_jsonb(p) allows the endpoint to survive before an optional
+metadata migration has run; absent fields remain null/empty, never invented.
 """
-
 from .tourism_api import build_tourism_card
-
 
 TOURISM_QUERY = """
 SELECT
-    id,
-    name,
-    category,
-    address
-FROM places
-WHERE id = %s;
+    p.id, p.name, p.category, p.address,
+    to_jsonb(p)->>'visit_duration' AS visit_duration,
+    to_jsonb(p)->>'indoor' AS indoor,
+    to_jsonb(p)->'tags' AS tags,
+    to_jsonb(p)->>'description' AS description,
+    to_jsonb(p)->>'best_time' AS best_time
+FROM places AS p
+WHERE p.id = %s;
 """
 
 
 def fetch_tourism_place(cursor, place_id: int) -> dict | None:
-    """Fetch the base POI record used to build a tourism card.
-
-    The current schema keeps metadata optional. Once the migration is applied,
-    additional tourism columns can be selected here without changing the API
-    contract.
-    """
     cursor.execute(TOURISM_QUERY, (place_id,))
     row = cursor.fetchone()
     if row is None:
         return None
-
     return {
         "id": row[0],
         "name": row[1],
         "category": row[2],
         "address": row[3],
+        "visit_duration": int(row[4]) if row[4] is not None else None,
+        "indoor": None if row[5] is None else row[5] == "true",
+        "tags": row[6] if isinstance(row[6], list) else [],
+        "description": row[7] or "",
+        "best_time": row[8] or "",
     }
 
 
 def build_card_from_cursor(cursor, place_id: int) -> dict | None:
     place = fetch_tourism_place(cursor, place_id)
-    if place is None:
-        return None
-    return build_tourism_card(place)
+    return None if place is None else build_tourism_card(place)
