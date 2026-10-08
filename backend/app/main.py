@@ -223,3 +223,65 @@ def get_nearby_places(
         "type": "FeatureCollection",
         "features": features
     }
+
+
+@app.get("/api/places/natural")
+def natural_place_search(query: str, lng: float | None = None, lat: float | None = None):
+    """Grounded Chinese search backed by existing PostGIS endpoints.
+
+    This is a rule-based MVP, not an LLM. Unhandled travel preferences are
+    disclosed instead of silently claiming optimization.
+    """
+    from fastapi import HTTPException
+    from .natural_language import parse_intent
+
+    if len(query) > 300:
+        raise HTTPException(status_code=422, detail="查询内容不得超过300字")
+    try:
+        intent = parse_intent(query)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if intent.nearby and (lng is None or lat is None):
+        raise HTTPException(status_code=422, detail="附近查询需要地图中心坐标")
+    if lng is not None and not -180 <= lng <= 180:
+        raise HTTPException(status_code=422, detail="经度不合法")
+    if lat is not None and not -90 <= lat <= 90:
+        raise HTTPException(status_code=422, detail="纬度不合法")
+
+    if intent.nearby:
+        collection = get_nearby_places(lng=lng, lat=lat, radius=intent.radius_m)
+    else:
+        collection = get_places()
+
+    features = collection["features"]
+    matched_names = [f for f in features if f["properties"]["name"] in query]
+    if matched_names:
+        features = matched_names
+    elif intent.categories:
+        features = [f for f in features if f["properties"]["category"] in intent.categories]
+    elif not intent.generic:
+        features = []
+    features = features[:100]
+
+    parts = []
+    if matched_names:
+        parts.append("已匹配景点名称")
+    elif intent.categories:
+        parts.append("已按景点类别筛选")
+    elif intent.generic:
+        parts.append("展示已收录景点")
+    else:
+        parts.append("未识别到可执行的景点名称或类别条件")
+    if intent.nearby:
+        parts.append(f"以地图中心为参考，搜索{intent.radius_m / 1000:g}公里范围")
+    if intent.unsupported:
+        parts.append("以下条件暂未参与筛选：" + "、".join(intent.unsupported))
+
+    return {
+        "mode": "rule_based",
+        "explanation": "；".join(parts),
+        "unsupported": list(intent.unsupported),
+        "matched_categories": list(intent.categories),
+        "places": {"type": "FeatureCollection", "features": features},
+    }
