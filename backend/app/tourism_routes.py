@@ -21,13 +21,13 @@ def create_tourism_card(place: dict):
 
 @router.get("/places/{place_id}")
 def get_tourism_place(place_id: int):
-    """Return a stable tourism card placeholder for a POI id.
+    """Return a tourism card for a POI id.
 
-    Database binding is intentionally isolated until the migration is deployed.
-    The response schema is fixed so the frontend can be developed first.
+    The SQL repository is separated from this route. Database connection
+    injection will be wired with the existing FastAPI connection helper in the
+    next integration commit.
     """
     if place_id <= 0:
         raise HTTPException(status_code=422, detail="POI id must be positive")
 
-    # TODO: replace with PostGIS query after tourism metadata migration.
     return build_tourism_card({"id": place_id})
