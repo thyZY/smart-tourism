@@ -24,6 +24,10 @@ const selectedCategory = ref('')
 const mapDisplayMode = ref('points')
 const selectedRoutePlaces = ref([])
 const routeDistanceKm = ref(0)
+const roadRoute = ref(null)
+const roadRoutePending = ref(false)
+const roadRouteError = ref('')
+let roadRequestController = null
 const selectedTheme = ref(null)
 const favoriteStorageKey = 'smart-tourism-favorites'
 const tourismCard = ref(null)
@@ -161,7 +165,21 @@ const calculateDistanceKm = (from, to) => {
   return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
+const resetRoadRoute = () => {
+  roadRequestController?.abort()
+  roadRequestController = null
+  roadRoute.value = null
+  roadRoutePending.value = false
+  roadRouteError.value = ''
+  map?.getSource('road-route')?.setData(emptyRoute())
+  if (map?.getLayer('route-line')) {
+    map.setLayoutProperty('route-line', 'visibility', 'visible')
+  }
+}
+
 const updateRoute = () => {
+  // Every selection change invalidates an earlier road geometry or in-flight request.
+  resetRoadRoute()
   const routeCoordinates = selectedRoutePlaces.value
     .map((feature) => feature.geometry?.coordinates)
     .filter((coordinates) => Array.isArray(coordinates))
@@ -210,6 +228,44 @@ const toggleRoutePlace = (feature) => {
 const clearRoute = () => {
   selectedRoutePlaces.value = []
   updateRoute()
+}
+
+const calculateRoadRoute = async () => {
+  if (!mapReady.value || !map || roadRoutePending.value ||
+      selectedRoutePlaces.value.length !== 2) return
+
+  const [from, to] = selectedRoutePlaces.value
+  const controller = new AbortController()
+  roadRequestController = controller
+  roadRoutePending.value = true
+  roadRouteError.value = ''
+  try {
+    const response = await axios.post('http://127.0.0.1:8010/api/routing/route', {
+      from_id: from.properties.id,
+      to_id: to.properties.id,
+      mode: 'pedestrian'
+    }, { signal: controller.signal, timeout: 20000 })
+    if (controller.signal.aborted || roadRequestController !== controller) return
+    const feature = response.data
+    if (feature.type !== 'Feature' || feature.geometry?.type !== 'LineString' ||
+        !Array.isArray(feature.geometry.coordinates) || feature.geometry.coordinates.length < 2) {
+      throw new Error('道路寻路结果缺少有效折线')
+    }
+    roadRoute.value = feature.properties
+    map.getSource('road-route')?.setData({ type: 'FeatureCollection', features: [feature] })
+    if (map.getLayer('route-line')) {
+      map.setLayoutProperty('route-line', 'visibility', 'none')
+    }
+  } catch (error) {
+    if (controller.signal.aborted || axios.isCancel(error)) return
+    roadRoute.value = null
+    roadRouteError.value = error.response?.data?.detail || '道路寻路失败，仍可查看原有直线预览'
+  } finally {
+    if (roadRequestController === controller) {
+      roadRequestController = null
+      roadRoutePending.value = false
+    }
+  }
 }
 
 const exitThemeMode = () => {
@@ -558,6 +614,7 @@ onMounted(() => {
   map.once('load', () => {
     map.addSource('places', { type: 'geojson', data: emptyPlaces() })
     map.addSource('route-line', { type: 'geojson', data: emptyRoute() })
+    map.addSource('road-route', { type: 'geojson', data: emptyRoute() })
     map.addLayer({
       id: 'places-points',
       type: 'circle',
@@ -608,6 +665,13 @@ onMounted(() => {
         'line-opacity': 0.85
       }
     })
+    map.addLayer({
+      id: 'road-route',
+      type: 'line',
+      source: 'road-route',
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': '#16a34a', 'line-width': 6, 'line-opacity': 0.92 }
+    })
     map.on('click', 'places-points', (e) => {
       const feature = e.features?.[0]
 
@@ -633,6 +697,7 @@ onMounted(() => {
 onUnmounted(() => {
   mapReady.value = false
   detailRequestController?.abort()
+  roadRequestController?.abort()
   requestController?.abort()
   clearPopup()
   map?.remove()
@@ -648,6 +713,10 @@ onUnmounted(() => {
     <RoutePanel
       :places="selectedRoutePlaces"
       :distance-km="routeDistanceKm"
+      :road-route="roadRoute"
+      :road-pending="roadRoutePending"
+      :road-error="roadRouteError"
+      @calculate-road="calculateRoadRoute"
       @clear="clearRoute"
     />
     <PlaceDetailPanel
