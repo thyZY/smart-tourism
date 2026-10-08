@@ -155,3 +155,57 @@ npm run build
 确认景点详情可以显示建议停留时间、兴趣标签、游览环境、资料尚未核实的说明；
 连续切换两个景点不应显示上一景点的详情。确认不存在景点返回404。
 PR 维持 Draft，直到这些检查在 Windows 本机通过。
+
+
+## 第四阶段：DeepSeek 辅助检索与候选行程（Draft / 本地验收中）
+
+已新增 `POST /api/ai/tourism-search`（`GET /api/places/natural` 规则版保留）。
+前端左下角“一句话找景点”现调用新接口，真实 POI 只从 PostGIS 取出，
+并可把候选站点显示为**直线距离**预览路线（不保证少走路、可达性、
+营业时间、交通时间或适合一天的实际日程）。
+
+- **没有 DeepSeek Key**：自动使用本地规则解析，`mode=rule_based`，不会联网请求模型。
+- **有 DeepSeek Key**：调用 DeepSeek JSON 意图解析，成功时 `mode=deepseek`；
+  请求失败或输出不合法时返回 `mode=rule_based_fallback` 并继续使用本地数据。
+- 模型只解析限定的 POI 类别、避开类别、时间/步行偏好和附近半径；
+  不允许大模型创建 POI、写 SQL、指定未入库景点或声称真实导航。
+- 模型/规则解析的停留天数和少走路偏好暂不进入真实路网优化，
+  会在 `unsupported` 中显式提醒。
+- 外部模型会接收用户输入的旅游需求文本；不要输入隐私或敏感信息。
+
+### 本地可选启用 DeepSeek（请勿发送/提交 Key）
+
+编辑**本地** `backend/.env`，保留既有 DB 配置，在末尾添加：
+
+```dotenv
+DEEPSEEK_API_KEY=你的私有API密钥
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-chat
+```
+
+根目录 `.gitignore` 已排除 `.env`。不要把 Key 放在前端的
+`VITE_*` 变量、截图、GitHub PR、代码、聊天或日志中；配置后重启后端。
+若实际模型名称不同，按 DeepSeek 官方控制台可用模型修改 `DEEPSEEK_MODEL`。
+未配置 Key 完全可以先做无 Key 回归测试。
+
+在两个终端运行数据库/后端与前端，第三个 PowerShell 终端执行：
+
+```powershell
+cd D:\smart-tourism
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"
+node tests/frontend-workflow.mjs
+cd frontend
+npm run build
+```
+
+手动 API 测试（后端必须已启动）：
+
+```powershell
+$body = @{query="南京一天历史文化景点，少走路";lng=118.7921;lat=32.0407;max_stops=3} | ConvertTo-Json
+Invoke-RestMethod -Uri "http://127.0.0.1:8010/api/ai/tourism-search" -Method Post -ContentType "application/json; charset=utf-8" -Body ([Text.Encoding]::UTF8.GetBytes($body))
+```
+
+检查返回的 `mode`、`intent`、`places.features` 和
+`itinerary_preview.stops`。无 Key 时 `mode` 必须为 `rule_based`；
+浏览器在“查找”后应出现对应真实地图点位，并可点击显示路线预览。
+所有源字段、坐标都应可追溯至当前 PostGIS 的 `places` 表。
