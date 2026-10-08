@@ -1,0 +1,492 @@
+{
+  "schema_version": 2,
+  "coverage": "exactly the 40 POI names in data/nanjing_pois.csv",
+  "review_status": "planning_estimates_unverified",
+  "note": "游览时间是用于算法原型的人工规划估算，不代表景区官方建议；室内外混合地点记录为null。简介及标签为人工整理草稿，未完成逐条来源核验。没有提供营业时间、价格、实时交通及真实客流。",
+  "records": [
+    {
+      "name": "南京博物院",
+      "visit_duration": 150,
+      "indoor": true,
+      "tags": [
+        "博物馆",
+        "历史",
+        "文物",
+        "展览"
+      ],
+      "description": "以历史文物及展览体验为主的博物馆。",
+      "best_time": ""
+    },
+    {
+      "name": "夫子庙",
+      "visit_duration": 90,
+      "indoor": null,
+      "tags": [
+        "历史文化",
+        "街区",
+        "城市漫游"
+      ],
+      "description": "秦淮区域的历史文化游览节点，包含多种街区活动。",
+      "best_time": ""
+    },
+    {
+      "name": "中山陵",
+      "visit_duration": 150,
+      "indoor": null,
+      "tags": [
+        "陵园",
+        "历史",
+        "步行",
+        "户外"
+      ],
+      "description": "以纪念建筑及陵园区域参观为主题的景点。",
+      "best_time": ""
+    },
+    {
+      "name": "南京总统府",
+      "visit_duration": 120,
+      "indoor": null,
+      "tags": [
+        "历史",
+        "建筑",
+        "文化"
+      ],
+      "description": "以近代历史建筑和相关展示为主题的游览地点。",
+      "best_time": ""
+    },
+    {
+      "name": "江宁织造博物馆",
+      "visit_duration": 90,
+      "indoor": true,
+      "tags": [
+        "博物馆",
+        "历史",
+        "工艺"
+      ],
+      "description": "适合了解织造相关历史文化的博物馆。",
+      "best_time": ""
+    },
+    {
+      "name": "南京市博物馆",
+      "visit_duration": 90,
+      "indoor": true,
+      "tags": [
+        "博物馆",
+        "历史",
+        "展览"
+      ],
+      "description": "以南京历史文化展览为主题的博物馆。",
+      "best_time": ""
+    },
+    {
+      "name": "南京科举博物馆",
+      "visit_duration": 90,
+      "indoor": true,
+      "tags": [
+        "博物馆",
+        "历史",
+        "科举"
+      ],
+      "description": "以科举历史文化展示为主题的博物馆。",
+      "best_time": ""
+    },
+    {
+      "name": "南京紫金山昆虫博物馆",
+      "visit_duration": 60,
+      "indoor": true,
+      "tags": [
+        "博物馆",
+        "自然科普",
+        "昆虫"
+      ],
+      "description": "以昆虫知识及自然科普展示为主题的场馆。",
+      "best_time": ""
+    },
+    {
+      "name": "江苏省美术馆",
+      "visit_duration": 75,
+      "indoor": true,
+      "tags": [
+        "艺术",
+        "美术",
+        "展览"
+      ],
+      "description": "适合艺术作品观赏和美术主题参观。",
+      "best_time": ""
+    },
+    {
+      "name": "瞻园",
+      "visit_duration": 75,
+      "indoor": null,
+      "tags": [
+        "园林",
+        "历史",
+        "建筑"
+      ],
+      "description": "以传统园林和历史建筑观赏为主题的景点。",
+      "best_time": ""
+    },
+    {
+      "name": "朝天宫",
+      "visit_duration": 75,
+      "indoor": null,
+      "tags": [
+        "历史",
+        "建筑",
+        "文化"
+      ],
+      "description": "适合历史建筑与文化主题游览。",
+      "best_time": ""
+    },
+    {
+      "name": "明孝陵",
+      "visit_duration": 150,
+      "indoor": false,
+      "tags": [
+        "陵园",
+        "历史",
+        "户外"
+      ],
+      "description": "包含陵园建筑和较大户外步行区域。",
+      "best_time": ""
+    },
+    {
+      "name": "美龄宫",
+      "visit_duration": 60,
+      "indoor": null,
+      "tags": [
+        "历史",
+        "建筑",
+        "文化"
+      ],
+      "description": "以历史建筑参观为主题的景点。",
+      "best_time": ""
+    },
+    {
+      "name": "南京航空烈士公墓",
+      "visit_duration": 60,
+      "indoor": false,
+      "tags": [
+        "纪念",
+        "历史",
+        "陵园"
+      ],
+      "description": "以历史纪念和缅怀为主题的户外地点。",
+      "best_time": ""
+    },
+    {
+      "name": "灵谷寺",
+      "visit_duration": 90,
+      "indoor": null,
+      "tags": [
+        "寺庙",
+        "宗教",
+        "历史"
+      ],
+      "description": "以寺院及周边文化景观参观为主题的景点。",
+      "best_time": ""
+    },
+    {
+      "name": "鸡鸣寺",
+      "visit_duration": 60,
+      "indoor": null,
+      "tags": [
+        "寺庙",
+        "宗教",
+        "文化"
+      ],
+      "description": "以寺院文化参观为主的景点。",
+      "best_time": ""
+    },
+    {
+      "name": "栖霞寺",
+      "visit_duration": 90,
+      "indoor": null,
+      "tags": [
+        "寺庙",
+        "宗教",
+        "历史"
+      ],
+      "description": "以寺院建筑及文化景观参观为主的景点。",
+      "best_time": ""
+    },
+    {
+      "name": "静海寺",
+      "visit_duration": 45,
+      "indoor": null,
+      "tags": [
+        "寺庙",
+        "宗教",
+        "历史"
+      ],
+      "description": "与寺庙历史文化相关的游览节点。",
+      "best_time": ""
+    },
+    {
+      "name": "天妃宫",
+      "visit_duration": 45,
+      "indoor": null,
+      "tags": [
+        "寺庙",
+        "宗教",
+        "历史"
+      ],
+      "description": "以历史宫观文化为主题的游览地点。",
+      "best_time": ""
+    },
+    {
+      "name": "玄武湖公园",
+      "visit_duration": 120,
+      "indoor": false,
+      "tags": [
+        "公园",
+        "湖泊",
+        "休闲",
+        "户外"
+      ],
+      "description": "以湖滨景观和城市户外休闲为主的公园。",
+      "best_time": ""
+    },
+    {
+      "name": "白鹭洲公园",
+      "visit_duration": 75,
+      "indoor": false,
+      "tags": [
+        "公园",
+        "园林",
+        "休闲"
+      ],
+      "description": "适合城市园林景观与户外漫步。",
+      "best_time": ""
+    },
+    {
+      "name": "清凉山公园",
+      "visit_duration": 75,
+      "indoor": false,
+      "tags": [
+        "公园",
+        "自然",
+        "散步"
+      ],
+      "description": "以城市绿地和步道体验为主的公园。",
+      "best_time": ""
+    },
+    {
+      "name": "江苏·福冈友好樱花园",
+      "visit_duration": 45,
+      "indoor": false,
+      "tags": [
+        "花园",
+        "景观",
+        "户外"
+      ],
+      "description": "以主题园林景观为主的户外游览地点。",
+      "best_time": ""
+    },
+    {
+      "name": "栖霞山",
+      "visit_duration": 180,
+      "indoor": false,
+      "tags": [
+        "山地",
+        "自然",
+        "徒步"
+      ],
+      "description": "山地自然景观游览，实际用时受步行路线影响较大。",
+      "best_time": ""
+    },
+    {
+      "name": "紫金山",
+      "visit_duration": 180,
+      "indoor": false,
+      "tags": [
+        "山地",
+        "自然",
+        "徒步"
+      ],
+      "description": "山地自然景观与步道活动区域。",
+      "best_time": ""
+    },
+    {
+      "name": "狮子山",
+      "visit_duration": 90,
+      "indoor": false,
+      "tags": [
+        "山地",
+        "景观",
+        "户外"
+      ],
+      "description": "以山地景观和户外参观为主的地点。",
+      "best_time": ""
+    },
+    {
+      "name": "红山森林动物园",
+      "visit_duration": 180,
+      "indoor": null,
+      "tags": [
+        "动物园",
+        "亲子",
+        "自然科普"
+      ],
+      "description": "以动物观赏及自然科普体验为主题的园区。",
+      "best_time": ""
+    },
+    {
+      "name": "江心洲鼋头石湿地风景区",
+      "visit_duration": 120,
+      "indoor": false,
+      "tags": [
+        "湿地",
+        "自然",
+        "户外"
+      ],
+      "description": "以湿地环境与自然景观为主的户外地点。",
+      "best_time": ""
+    },
+    {
+      "name": "中华门瓮城",
+      "visit_duration": 75,
+      "indoor": null,
+      "tags": [
+        "古迹",
+        "城墙",
+        "历史"
+      ],
+      "description": "以古城门及历史建筑观赏为主的景点。",
+      "best_time": ""
+    },
+    {
+      "name": "阅江楼",
+      "visit_duration": 90,
+      "indoor": null,
+      "tags": [
+        "古建筑",
+        "观景",
+        "历史"
+      ],
+      "description": "以历史建筑与登高观景为主题的游览地点。",
+      "best_time": ""
+    },
+    {
+      "name": "南京长江大桥",
+      "visit_duration": 60,
+      "indoor": false,
+      "tags": [
+        "桥梁",
+        "地标",
+        "城市景观"
+      ],
+      "description": "以桥梁地标与沿江城市景观为主题的游览节点。",
+      "best_time": ""
+    },
+    {
+      "name": "大报恩寺遗址景区",
+      "visit_duration": 120,
+      "indoor": null,
+      "tags": [
+        "遗址",
+        "历史",
+        "文化"
+      ],
+      "description": "以文化遗址及其相关展示为主题的景区。",
+      "best_time": ""
+    },
+    {
+      "name": "神功圣德碑",
+      "visit_duration": 30,
+      "indoor": false,
+      "tags": [
+        "碑刻",
+        "历史",
+        "古迹"
+      ],
+      "description": "以历史碑刻为主题的短时参观点。",
+      "best_time": ""
+    },
+    {
+      "name": "下马坊遗址公园",
+      "visit_duration": 45,
+      "indoor": false,
+      "tags": [
+        "遗址",
+        "公园",
+        "历史"
+      ],
+      "description": "以遗址景观及户外参观为主的地点。",
+      "best_time": ""
+    },
+    {
+      "name": "心远楼",
+      "visit_duration": 30,
+      "indoor": null,
+      "tags": [
+        "建筑",
+        "古迹",
+        "历史"
+      ],
+      "description": "以历史建筑参观为主的短时游览节点。",
+      "best_time": ""
+    },
+    {
+      "name": "仪凤门",
+      "visit_duration": 30,
+      "indoor": false,
+      "tags": [
+        "城门",
+        "古迹",
+        "历史"
+      ],
+      "description": "以古城门建筑为主题的短时户外参观点。",
+      "best_time": ""
+    },
+    {
+      "name": "正觉寺丛葬地",
+      "visit_duration": 30,
+      "indoor": false,
+      "tags": [
+        "纪念",
+        "遗址",
+        "历史"
+      ],
+      "description": "以历史遗址及纪念为主题的参观点。",
+      "best_time": ""
+    },
+    {
+      "name": "老门东历史文化街区",
+      "visit_duration": 120,
+      "indoor": null,
+      "tags": [
+        "街区",
+        "历史",
+        "休闲",
+        "文化"
+      ],
+      "description": "适合步行体验的历史文化街区。",
+      "best_time": ""
+    },
+    {
+      "name": "德云社南京分社",
+      "visit_duration": 120,
+      "indoor": true,
+      "tags": [
+        "演出",
+        "文化",
+        "曲艺"
+      ],
+      "description": "以现场曲艺演出体验为主题；时长仅为演示估算。",
+      "best_time": ""
+    },
+    {
+      "name": "甘熙故居",
+      "visit_duration": 75,
+      "indoor": null,
+      "tags": [
+        "故居",
+        "历史",
+        "建筑"
+      ],
+      "description": "以传统民居与历史文化体验为主的游览地点。",
+      "best_time": ""
+    }
+  ]
+}

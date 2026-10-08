@@ -26,18 +26,10 @@ const selectedRoutePlaces = ref([])
 const routeDistanceKm = ref(0)
 const selectedTheme = ref(null)
 const favoriteStorageKey = 'smart-tourism-favorites'
-const placeDetails = {
-  1: {
-    intro: '中国著名历史文化景区，馆藏丰富，适合深入了解南京历史。',
-    opening: '09:00-17:00',
-    rating: 4.8
-  },
-  2: {
-    intro: '秦淮河畔的传统文化街区，汇集民俗、美食与古建筑。',
-    opening: '全天开放',
-    rating: 4.7
-  }
-}
+const tourismCard = ref(null)
+const tourismLoading = ref(false)
+const tourismError = ref('')
+let detailRequestController = null
 
 const readFavoritePlaceIds = () => {
   try {
@@ -258,18 +250,50 @@ const clearPopup = () => {
 }
 
 const closePlaceDetail = () => {
+  detailRequestController?.abort()
+  detailRequestController = null
   selectedPlace.value = null
   selectedPlaceId.value = null
+  tourismCard.value = null
+  tourismError.value = ''
+  tourismLoading.value = false
   highlightSelectedPlace(null)
 }
 
-const openPlaceDetail = (feature) => {
-  if (!feature?.properties?.id) return
+const openPlaceDetail = async (feature) => {
+  const placeId = feature?.properties?.id
+  if (!Number.isInteger(placeId) || placeId <= 0) return
 
+  detailRequestController?.abort()
+  const controller = new AbortController()
+  detailRequestController = controller
   selectedPlace.value = feature
-  selectedPlaceId.value = feature.properties.id
+  selectedPlaceId.value = placeId
+  tourismCard.value = null
+  tourismError.value = ''
+  tourismLoading.value = true
   clearPopup()
-  highlightSelectedPlace(feature.properties.id)
+  highlightSelectedPlace(placeId)
+
+  try {
+    const response = await axios.get(
+      `http://127.0.0.1:8010/api/tourism/places/${placeId}`,
+      { signal: controller.signal, timeout: 10000 }
+    )
+    if (!controller.signal.aborted && selectedPlaceId.value === placeId) {
+      tourismCard.value = response.data
+    }
+  } catch (error) {
+    if (controller.signal.aborted || axios.isCancel(error)) return
+    tourismError.value = error.response?.status === 404
+      ? '数据库中未找到该景点'
+      : '旅游资料加载失败，请检查后端或数据库'
+  } finally {
+    if (detailRequestController === controller) {
+      detailRequestController = null
+      tourismLoading.value = false
+    }
+  }
 }
 
 const showPopup = (feature) => {
@@ -608,6 +632,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   mapReady.value = false
+  detailRequestController?.abort()
   requestController?.abort()
   clearPopup()
   map?.remove()
@@ -627,7 +652,9 @@ onUnmounted(() => {
     />
     <PlaceDetailPanel
       :place="selectedPlace"
-      :place-details="placeDetails"
+      :tourism-card="tourismCard"
+      :tourism-loading="tourismLoading"
+      :tourism-error="tourismError"
       :is-favorite="selectedPlace ? isFavorite(selectedPlace.properties.id) : false"
       :is-in-route="selectedPlace ? selectedRoutePlaces.some((place) => place.properties.id === selectedPlace.properties.id) : false"
       @close="closePlaceDetail"

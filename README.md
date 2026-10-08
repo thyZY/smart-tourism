@@ -100,3 +100,58 @@ npm run build
     npm run build
 
 最后在网页展开预览面板，生成3站历史文化景点顺序并检查地图连线。确认无误后再考虑合并；不要把此版本描述成GPT/AI自动行程规划。
+
+
+## 第三阶段：POI 旅游语义卡片（PR #3，待本机验收）
+
+`GET /api/tourism/places/{id}` 现在由 FastAPI 正式注册，查询 PostgreSQL 的真实 POI 信息，
+缺失 ID 返回 HTTP 404。扩展列不存在时仍可读取基本属性并显示“暂无数据”，而不是编造信息。
+点击地图点位或搜索结果，会向后端请求旅游卡片；请求过程中显示加载状态，
+连续切换景点时取消过时请求。原有搜索、收藏、路线预览 API 保留。
+
+`data/poi_tourism_metadata.json` 是与 `data/nanjing_pois.csv` 完全匹配的40条旅游属性草稿。
+**游览时长只是人工规划估算，非景区官方信息**；室内外不明确的场景用 `null`，
+尚未核实的推荐时段用空字符串。绝不把估算值展示为真实开放时间、票价或实时客流。
+前端因此删除了之前硬编码的“开放时间”和“推荐指数”演示数据。
+
+### 本地应用流程（PowerShell）
+
+> 在执行 `--apply` 之前，确认 `backend/.env` 指向项目的本地测试数据库，并根据需要备份。
+> 该操作会更新现有40个 POI 的旅游字段，虽然保留几何数据和基础属性，但不能自动恢复旧旅游字段。
+
+从项目根目录依次执行：
+
+```powershell
+cd D:\smart-tourism
+git fetch origin
+git switch feat/poi-tourism-metadata-20261008
+git pull --ff-only
+
+# 第一步：纯文件校验，不修改数据库
+.\.venv\Scripts\python.exe scripts/import_tourism_metadata.py
+
+# 第二步：显式执行幂等表结构迁移与40行旅游元数据更新
+.\.venv\Scripts\python.exe scripts/import_tourism_metadata.py --apply
+
+# 第三步：单元测试（无需启动服务器）
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"
+
+# 第四步：启动数据库及后端后执行 API/数据库测试
+.\.venv\Scripts\python.exe tests/verify_database.py
+.\.venv\Scripts\python.exe tests/verify_api.py
+
+# 第五步：前端回归与生产构建
+node tests/frontend-workflow.mjs
+cd frontend
+npm run build
+```
+
+`--apply` 会先核对数据库内40个名称与 CSV 是否完全匹配。
+如缺少景点、存在重名或数量不等于40，脚本会拒绝更新并回滚。
+迁移和40行 UPDATE 在一个事务中提交；重复运行不会重复插入记录。
+数据库原有的 `id`、`geom`、`category`、`rating` 等字段不变。
+
+浏览器验收：访问 `http://localhost:5173`，分别点击“南京博物院”和“夫子庙”，
+确认景点详情可以显示建议停留时间、兴趣标签、游览环境、资料尚未核实的说明；
+连续切换两个景点不应显示上一景点的详情。确认不存在景点返回404。
+PR 维持 Draft，直到这些检查在 Windows 本机通过。

@@ -28,7 +28,16 @@ try:
         cur.execute('SELECT indexdef FROM pg_indexes WHERE schemaname = %s AND indexname = %s',
                     (schema, 'idx_places_geom'))
         assert 'USING gist (geom)' in cur.fetchone()[0]
-    print('PASS: fresh schema, UTF8 names, seed twice = 3 POIs, GiST index; transaction rolled back')
+        migration = (root / 'database' / 'migrations' / 'add_tourism_metadata.sql').read_text(encoding='utf-8')
+        for _ in range(2):
+            cur.execute(migration)
+        cur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = %s AND table_name = 'places'", (schema,))
+        actual_columns = {row[0] for row in cur.fetchall()}
+        assert {'visit_duration', 'indoor', 'tags', 'description', 'best_time'} <= actual_columns
+        cur.execute("UPDATE places SET visit_duration = 150, indoor = TRUE, tags = ARRAY['历史', '展览'] WHERE name = '南京博物院'")
+        cur.execute("SELECT visit_duration, indoor, tags FROM places WHERE name = '南京博物院'")
+        assert cur.fetchone() == (150, True, ['历史', '展览'])
+    print('PASS: fresh schema, seed twice, repeated metadata migration and typed columns; transaction rolled back')
 finally:
     conn.rollback()
     conn.close()
