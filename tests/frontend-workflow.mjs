@@ -47,10 +47,11 @@ const context = vm.createContext({
   document: { querySelector: () => null },
   axios: {
     isCancel: () => false,
-    get: (url, options) => new Promise((resolve, reject) => requests.push({ url, options, resolve, reject }))
+    get: (url, options) => new Promise((resolve, reject) => requests.push({ url, options, resolve, reject })),
+    post: (url, data, options) => new Promise((resolve, reject) => requests.push({ url, data, options, resolve, reject }))
   }
 })
-vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, selectTheme, selectedTheme, focusResult, closePlaceDetail, toggleRoutePlace, clearRoute, toggleFavorite, showFavoritePlaces, isFavorite, favoritePlaceIds, showFavoritesOnly, selectedRoutePlaces, routeDistanceKm, selectedPlace, selectedPlaceId, tourismCard, tourismLoading, tourismError, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
+vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, selectTheme, selectedTheme, focusResult, closePlaceDetail, toggleRoutePlace, clearRoute, toggleFavorite, showFavoritePlaces, isFavorite, favoritePlaceIds, showFavoritesOnly, selectedRoutePlaces, routeDistanceKm, calculateRoadRoute, roadRoute, roadRoutePending, roadRouteError, selectedPlace, selectedPlaceId, tourismCard, tourismLoading, tourismError, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
 const api = context.api
 const empty = { type: 'FeatureCollection', features: [] }
 const tick = () => new Promise(resolve => setImmediate(resolve))
@@ -245,6 +246,25 @@ assert.equal(api.selectedRoutePlaces.value.length, 1, 'first route place is sele
 assert.equal(map.sources['route-line'].data.features.length, 0, 'one selected place has no line')
 api.toggleRoutePlace(confuciusTemple)
 assert.equal(api.selectedRoutePlaces.value.length, 2, 'second route place is selected')
+assert.equal(map.sources['road-route'].data.features.length, 0, 'road route begins empty')
+const routingPending = api.calculateRoadRoute()
+const roadRequest = requests.at(-1)
+assert.equal(roadRequest.url, 'http://127.0.0.1:8010/api/routing/route')
+assert.equal(roadRequest.data.from_id, 1)
+assert.equal(roadRequest.data.to_id, 2)
+assert.equal(roadRequest.options.signal.aborted, false)
+assert.equal(api.roadRoutePending.value, true)
+roadRequest.resolve({ data: {
+  type: 'Feature',
+  properties: { distance_km: 0.908, duration_minutes: 11.3 },
+  geometry: { type: 'LineString', coordinates: [
+    [118.7921, 32.0407], [118.7901, 32.0397], [118.7877, 32.0270]
+  ] }
+} })
+await routingPending
+assert.equal(api.roadRoute.value.distance_km, 0.908, 'road distance comes from Valhalla not straight line')
+assert.equal(map.sources['road-route'].data.features.length, 1, 'GeoJSON road layer receives geometry')
+assert.equal(map.layoutProperties.at(-1).value, 'none', 'straight line hidden while road geometry is shown')
 const route = map.sources['route-line'].data.features[0].geometry
 assert.deepEqual(JSON.parse(JSON.stringify(route)), {
   type: 'LineString',
@@ -252,6 +272,9 @@ assert.deepEqual(JSON.parse(JSON.stringify(route)), {
 }, 'route line preserves selection order')
 assert.ok(api.routeDistanceKm.value > 1 && api.routeDistanceKm.value < 2, 'route distance uses haversine kilometers')
 api.toggleRoutePlace(museum)
+assert.equal(api.roadRoute.value, null, 'changing selected POIs invalidates previous road distance')
+assert.equal(map.sources['road-route'].data.features.length, 0, 'changing selected POIs clears road geometry')
+assert.equal(map.layoutProperties.at(-1).value, 'visible', 'straight line restored on route change')
 assert.equal(api.selectedRoutePlaces.value.length, 1, 'selecting an existing place removes it')
 assert.equal(map.sources['route-line'].data.features.length, 0, 'line clears when fewer than two places remain')
 api.clearRoute()
