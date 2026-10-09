@@ -6,6 +6,7 @@ const props = defineProps({
   plan: { type: Object, required: true },
   currentRouteIds: { type: Array, default: () => [] },
   disabled: { type: Boolean, default: false },
+  autoTrim: { type: Boolean, default: true },
 })
 const emit = defineEmits(['applied'])
 const input = ref('')
@@ -21,6 +22,7 @@ const currentState = computed(() => ({
   transport_mode: props.plan.travel_mode,
   budget_hours: props.plan.budget_minutes / 60,
   start_time: props.plan.start_time,
+  auto_trim: props.autoTrim,
 }))
 const matchesBase = computed(() => {
   const base = preview.value?.base_state
@@ -32,6 +34,7 @@ const matchesBase = computed(() => {
     base.transport_mode === state.transport_mode &&
     base.budget_hours === state.budget_hours &&
     base.start_time === state.start_time &&
+    base.auto_trim === state.auto_trim &&
     JSON.stringify(props.currentRouteIds) === JSON.stringify(state.place_ids)
 })
 const canConfirm = computed(() => !props.disabled && !pending.value &&
