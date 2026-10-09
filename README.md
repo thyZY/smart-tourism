@@ -431,3 +431,87 @@ $result.geometry.features.Count
 自动化 CI 已验证 Python 单元测试与模拟前端路线工作流；
 但公开 Valhalla 的多站矩阵和 Windows 实际地图显示
 仍需要本地联网验收。
+
+
+## 第九阶段：AI 个性化单日行程（DeepSeek × PostGIS × Valhalla）
+
+新增 `POST /api/ai/itinerary`，并在左侧「AI 智慧文旅」面板增加
+**生成 AI 个性化道路行程**按钮。用户填写自然语言需求，并可设置：
+3—6个景点、3—12小时预算、预计出发时间、步行/骑行/驾车
+（默认根据意图选择，少走路会优先考虑站间驾车）。
+
+实现流程如下：
+1. 使用现有 DeepSeek JSON 意图解析：严格校验景点类别、距离半径、
+   偏好和游览天数；若没有密钥或模型失败，使用本地规则降级。
+   明确提出的一天和低步行需求优先于模型推测。
+2. 从 **PostGIS** 查询真实候选景点，并按当前地图中心的球面距离初选，
+   使用库中存在的 `visit_duration` 和保守换乘缓冲做预算初筛；
+   不相信模型编造的地点、经纬度或交通费用。选景阶段尚未对所有
+   40+ POI 建立全局道路矩阵，因此不宣称全局最佳景点组合。
+3. 使用现有 **Valhalla** `/sources_to_targets` 时间矩阵在选出的
+   3—6站之间优化顺序（固定自动选中的第一站）；再用 `/route`
+   获取逐段真实道路 GeoJSON。
+4. 以分段道路时间及数据库已知的停留时长构建**暂定**到离时间；
+   当停留时长未知时，后续时刻保持未知，`within_time_budget=null`；
+   不将估计行程伪装成真实开放时间/预约时间。
+5. 前端更新已选景点、交通方式、路线颜色和多站行程比较表，
+   并在 AI 面板展示暂定时刻、推荐依据与未验证限制。
+   用户继续手动修改路线时会清除旧的道路结果。
+
+请求示例（经纬度为用户当前**地图中心**，非设备GPS）：
+
+```json
+{
+  "query": "南京一天历史文化游，少走路",
+  "lng": 118.7921,
+  "lat": 32.0407,
+  "max_stops": 4,
+  "budget_hours": 8,
+  "start_time": "09:00",
+  "transport_mode": "auto"
+}
+```
+
+`transport_mode` 可以省略，允许值 `pedestrian`、`bicycle`、`auto`。
+返回 `ai_mode`、`intent`、`selected_places`（真实数据库POI）、
+`itinerary`（道路时间矩阵顺序优化和实际 GeoJSON 线路）、
+`timeline`（仅在数据足够时给出暂定时间）、
+`within_time_budget`、`limitations`。
+不足3个候选/不支持多日/时间预算跨午夜会返回422，
+不可达路网或缺失路线返回502而不会伪造道路。
+本阶段只支持单日行程、单一交通方式、固定首站，
+未模拟实时拥堵、步行接驳、营业时间、等候与票价。
+站间驾车并不保证进入景区后无步行需要。
+DeepSeek 会接收用户输入的旅游偏好文本，不要填写个人敏感信息。
+
+### 更新与验收
+
+```powershell
+cd D:\smart-tourism
+git fetch origin
+git switch feat/poi-tourism-metadata-20261008
+git pull --ff-only
+
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"
+node tests/frontend-workflow.mjs
+node tests/ui-layout.mjs
+
+cd frontend
+npm run build
+```
+
+后端继续监听8010，前端继续在5173。
+在左下方输入「南京一天历史文化游，少走路」，保持默认4站/8小时/09:00，
+点击「生成 AI 个性化道路行程」，检查：
+- 返回 `ai_mode=deepseek`（本地Key生效时），
+  或 `rule_based`/ `rule_based_fallback`（规则降级）；
+- 右侧路线面板中的景点均来自数据库且数量在3—6之间；
+- 地图显示真实道路折线，暂定日程有到离时间或明确的未知标记；
+- 交通方式和预算约束透明可见；
+- 修改所选景点后，旧的 AI 路线失效，不会继续当作当前行程；
+- 输入「南京两天游」应提示只支持单日；关闭公网道路服务应提示失败，
+  不会显示0公里假数据。
+
+GitHub Actions 对 Python 离线测试、前端模拟交互和 Vite 构建进行自动验证。
+真正的公网 DeepSeek、南京数据库、Valhalla 矩阵及浏览器视觉效果仍须
+本机验收，不能将 CI 通过视为生产环境保证。
