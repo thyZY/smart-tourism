@@ -184,6 +184,7 @@ const resetRoadRoute = (clearResults = true) => {
   roadRouteError.value = ''
   if (clearResults) roadResults.value = {}
   map?.getSource('road-route')?.setData(emptyRoute())
+  map?.getSource('routing-access-points')?.setData(emptyPlaces())
   if (map?.getLayer('route-line')) {
     map.setLayoutProperty('route-line', 'visibility', 'visible')
   }
@@ -198,8 +199,23 @@ const resetMultiRoute = (clearResults = true) => {
   if (clearResults) multiResults.value = {}
 }
 
+const setRoutingMarkers = points => {
+  const features = (points ?? [])
+    .filter(point => point.kind === 'reviewed_access_point' &&
+      Number.isFinite(point.lon) && Number.isFinite(point.lat))
+    .map(point => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [point.lon, point.lat] },
+      properties: { name: point.name, access_name: point.access_name },
+    }))
+  map?.getSource('routing-access-points')?.setData({
+    type: 'FeatureCollection', features,
+  })
+}
+
 const showMultiRoute = (result) => {
   multiRoute.value = result
+  setRoutingMarkers(result.routing_points)
   map?.getSource('road-route')?.setData(result.geometry)
   if (map?.getLayer('road-route')) {
     map.setPaintProperty('road-route', 'line-color', roadModeColors[result.mode])
@@ -211,6 +227,7 @@ const showMultiRoute = (result) => {
 
 const showRoadResult = (feature) => {
   roadRoute.value = feature.properties
+  setRoutingMarkers(feature.properties.routing_points)
   map?.getSource('road-route')?.setData({ type: 'FeatureCollection', features: [feature] })
   if (map?.getLayer('road-route')) {
     map.setPaintProperty('road-route', 'line-color', roadModeColors[feature.properties.mode])
@@ -755,6 +772,7 @@ onMounted(() => {
     map.addSource('places', { type: 'geojson', data: emptyPlaces() })
     map.addSource('route-line', { type: 'geojson', data: emptyRoute() })
     map.addSource('road-route', { type: 'geojson', data: emptyRoute() })
+    map.addSource('routing-access-points', { type: 'geojson', data: emptyPlaces() })
     map.addLayer({
       id: 'places-points',
       type: 'circle',
@@ -812,6 +830,18 @@ onMounted(() => {
       source: 'road-route',
       layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: { 'line-color': '#16a34a', 'line-width': 6, 'line-opacity': 0.92 }
+    })
+    // Distinguish actual reviewed routing access points from red POI markers.
+    map.addLayer({
+      id: 'routing-access-points',
+      type: 'circle',
+      source: 'routing-access-points',
+      paint: {
+        'circle-radius': 7,
+        'circle-color': '#7c3aed',
+        'circle-stroke-color': '#ffffff',
+        'circle-stroke-width': 2,
+      },
     })
     map.on('click', 'places-points', (e) => {
       const feature = e.features?.[0]
