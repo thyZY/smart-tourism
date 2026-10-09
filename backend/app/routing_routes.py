@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from typing import Literal
 
 from .db import get_db_connection
+from .access_points import apply_routing_access, routing_provenance
 
 router = APIRouter(prefix="/api/routing", tags=["road-routing"])
 
@@ -65,13 +66,20 @@ def load_places(from_id, to_id):
     try:
         with conn.cursor() as cursor:
             cursor.execute(
-                "SELECT id, name, ST_X(geom), ST_Y(geom) "
+                "SELECT id, name, ST_X(geom), ST_Y(geom), "
+                "to_jsonb(places)->'routing_access' "
                 "FROM places WHERE id = ANY(%s)", ([from_id, to_id],)
             )
             rows = cursor.fetchall()
     finally:
         conn.close()
-    return {row[0]: {"id": row[0], "name": row[1], "lon": row[2], "lat": row[3]} for row in rows}
+    return {
+        row[0]: {
+            "id": row[0], "name": row[1], "lon": row[2], "lat": row[3],
+            "routing_access": row[4] if len(row) > 4 and isinstance(row[4], dict) else None,
+        }
+        for row in rows
+    }
 
 
 def request_valhalla(first, second, mode="pedestrian", *, opener=urlopen):
@@ -121,7 +129,15 @@ def build_road_feature(first, second, response, mode="pedestrian"):
             "distance_km": round(float(length), 3),
             "duration_minutes": round(float(time) / 60, 1),
             "provider": "valhalla_osm",
-            "limitations": "距离和时间为OSM路网估算，不含实时交通与交通工具等待时间；起终点可能吸附至道路。",
+            "routing_points": [
+                routing_provenance(p) if p.get("routing_point") else {
+                    "id": p["id"], "name": p["name"],
+                    "kind": "poi_coordinate_fallback", "mode": mode,
+                    "lon": p["lon"], "lat": p["lat"],
+                }
+                for p in (first, second)
+            ],
+            "limitations": "距离和时间为OSM路网估算，不含实时交通与交通工具等待时间；无审核入口时沿用POI坐标，起终点可能吸附至道路。",
         },
         "geometry": {"type": "LineString", "coordinates": coordinates},
     }
@@ -134,7 +150,8 @@ def route_between_places(body: RoadRouteRequest):
     places = load_places(body.from_id, body.to_id)
     if body.from_id not in places or body.to_id not in places:
         raise HTTPException(status_code=404, detail="数据库中找不到对应景点")
-    first, second = places[body.from_id], places[body.to_id]
+    first = apply_routing_access(places[body.from_id], body.mode)
+    second = apply_routing_access(places[body.to_id], body.mode)
     try:
         response = request_valhalla(first, second, mode=body.mode)
         return build_road_feature(first, second, response, mode=body.mode)
