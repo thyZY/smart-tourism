@@ -1,5 +1,6 @@
 <script setup>
 import axios from 'axios'
+import AiChatPanel from './AiChatPanel.vue'
 import { computed, ref } from 'vue'
 
 const props = defineProps({
@@ -131,6 +132,16 @@ const replan = async () => {
   } finally {
     replanning.value = false
   }
+}
+
+const applyChatReplan = response => {
+  planResult.value = response
+  budgetHours.value = response.budget_minutes / 60
+  startTime.value = response.start_time
+  transportMode.value = response.travel_mode
+  initEditing(response)
+  message.value = response.explanation
+  emit('planned', response)
 }
 
 const errorMessage = err => {
@@ -326,6 +337,9 @@ const showPreview = () => {
           预算自动调整：本次已删除{{ planResult.dropped_place_ids.length }}个非锁定景点。
         </p>
       </section>
+      <AiChatPanel :plan="planResult" :current-route-ids="currentRouteIds"
+        :disabled="!mapReady || editDirty || routeOutOfSync || replanning || planning || pending"
+        @applied="applyChatReplan" />
       <details>
         <summary>查看规划限制与注意事项</summary>
         <ul><li v-for="item in planResult.limitations" :key="item">{{ item }}</li></ul>
