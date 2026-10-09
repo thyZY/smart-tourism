@@ -43,6 +43,7 @@ const replacementChoices = computed(() =>
 )
 const initEditing = response => {
   editIds.value = [...response.itinerary.optimized_order_ids]
+  maxStops.value = editIds.value.length
   lockedIds.value = (response.locked_place_ids || []).filter(id => editIds.value.includes(id))
   editDirty.value = false
   editError.value = ''
@@ -160,7 +161,7 @@ const search = async () => {
 }
 
 const plan = async () => {
-  if (!props.mapReady || pending.value || planning.value || !query.value.trim() || !props.center) return
+  if (!props.mapReady || pending.value || planning.value || replanning.value || !query.value.trim() || !props.center) return
   planning.value = true
   planResult.value = null
   message.value = '正在筛选真实景点并计算道路时间矩阵；公共路网服务可能需要等待…'
@@ -210,15 +211,18 @@ const showPreview = () => {
           </select>
         </label>
         <label>可用时间
-          <select v-model.number="budgetHours" :disabled="planning || pending">
+          <select v-model.number="budgetHours" :disabled="planning || pending || replanning"
+            @change="planResult && (editDirty = true)">
             <option v-for="n in [3, 4, 5, 6, 7, 8, 9, 10, 11, 12]" :key="n" :value="n">{{ n }}小时</option>
           </select>
         </label>
         <label>出发时间
-          <input v-model="startTime" type="time" aria-label="计划出发时间" :disabled="planning || pending" />
+          <input v-model="startTime" type="time" aria-label="计划出发时间" :disabled="planning || pending || replanning"
+            @change="planResult && (editDirty = true)" />
         </label>
         <label>交通方式
-          <select v-model="transportMode" :disabled="planning || pending">
+          <select v-model="transportMode" :disabled="planning || pending || replanning"
+            @change="planResult && (editDirty = true)">
             <option value="">根据需求选择</option>
             <option value="pedestrian">步行</option>
             <option value="bicycle">骑行</option>
@@ -268,6 +272,7 @@ const showPreview = () => {
       </details>
       <section class="edit-panel" aria-label="动态调整AI行程">
         <h3>调整当前行程</h3>
+        <p>上方“景点数量”用于重新生成新行程；本区重新规划以实际编辑后的站点数量为准。</p>
         <p>保留第一站作为起点。可锁定必去景点、替换或移除其他站点；
           修改上方预算、出发时间或交通方式后，点击下方按钮重新计算道路。</p>
         <p v-if="routeOutOfSync" class="plan-alert" role="status">
@@ -305,7 +310,8 @@ const showPreview = () => {
           {{ choicesPending ? '正在读取数据库景点…' : '加载可替换景点（PostGIS）' }}
         </button>
         <label class="auto-trim">
-          <input v-model="autoTrim" type="checkbox" :disabled="replanning" />
+          <input v-model="autoTrim" type="checkbox" :disabled="replanning"
+            @change="editDirty = true" />
           超时则自动移除末尾未锁定景点（至少保留3站）
         </label>
         <p v-if="editDirty || routeOutOfSync" class="edit-warning" role="status">
