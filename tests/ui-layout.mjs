@@ -26,6 +26,11 @@ assert(
 assert(rootTemplate.indexOf('<ItineraryPreviewPanel') < rootTemplate.indexOf('<NaturalSearchPanel'))
 assert(rootTemplate.includes('@change-mode="selectRoadMode"'), 'transport mode switching remains wired')
 assert(rootTemplate.includes('@calculate-road="calculateRoadRoute"'), 'Valhalla requests remain wired')
+assert(rootTemplate.includes('@planned="applyAiPlan"'), 'AI itinerary reaches the map renderer')
+assert(ai.includes("'/api/ai/itinerary'") || ai.includes("127.0.0.1:8010/api/ai/itinerary"),
+       'AI panel has the personalized route endpoint')
+assert(ai.includes("planResult.timeline"), 'AI itinerary includes a provisional schedule')
+assert(ai.includes("planResult.limitations"), 'unverified constraints are disclosed')
 assert(rootTemplate.includes('@toggle-route="selectedPlace && toggleRoutePlace(selectedPlace)"'))
 assert(rootTemplate.includes('aria-label="南京景点地图"'))
 
