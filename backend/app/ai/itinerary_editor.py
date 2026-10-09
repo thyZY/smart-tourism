@@ -107,6 +107,11 @@ def replan_edited_itinerary(place_ids, locked_ids, mode, budget_hours,
             raise ValueError("道路规划服务返回的景点或分段不一致")
         ordered_features = [by_id[ident] for ident in remaining]
         timeline, fits = build_timeline(route, ordered_features, budget, start_time)
+        # Unknown dwell time is never invented. But known dwell + measured
+        # travel still provides a provable lower bound for budget conflicts.
+        lower_bound = known_dwell + route["duration_minutes"]
+        if lower_bound > budget:
+            fits = False
         if fits is False and auto_trim:
             if len(remaining) <= 3:
                 raise BudgetConflict("即使保留3站仍超出预算，请延长时间或替换景点")
@@ -122,7 +127,9 @@ def replan_edited_itinerary(place_ids, locked_ids, mode, budget_hours,
     ]
     if fits is None:
         limitations.append("部分景点缺少停留时间，无法确认完整行程是否符合预算")
-    elif fits is False:
+    elif missing_dwell and fits is False:
+        limitations.append("虽然部分停留时间未知，但已知停留时间加实际道路时间已经超出预算")
+    if fits is False:
         limitations.append("这份行程超出预算：关闭了自动减站，请手动调整")
     if removed:
         limitations.append("为了符合时间预算，自动移除未锁定景点：" +
