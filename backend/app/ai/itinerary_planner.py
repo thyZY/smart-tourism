@@ -107,6 +107,14 @@ def build_personalized_itinerary(features, origin, intent, mode, max_stops,
         limitations.append("存在未知景点停留时长，无法判定是否符合可用时间预算")
     elif not fits:
         limitations.append("实际道路交通与停留时间超出时间预算；建议减少景点或增加时间")
+    category_counts = {}
+    matched_tag_pois = 0
+    for feature in selected:
+        category = feature["properties"].get("category") or "未分类"
+        category_counts[category] = category_counts.get(category, 0) + 1
+        recommendation = feature["properties"].get("recommendation") or {}
+        if recommendation.get("matched_tags"):
+            matched_tag_pois += 1
     return {
         "method": "grounded_poi_selection_plus_exact_road_matrix",
         "travel_mode": mode,
@@ -116,6 +124,14 @@ def build_personalized_itinerary(features, origin, intent, mode, max_stops,
         "within_time_budget": fits,
         "selected_places": {"type": "FeatureCollection", "features": selected},
         "recommendation_method": "explainable_greedy_v1",
+        "recommendation_summary": {
+            "selected_count": len(selected),
+            "distinct_categories": len(category_counts),
+            "categories": category_counts,
+            "verified_tag_match_pois": matched_tag_pois,
+            "origin_distance_kind": "haversine_candidate_proxy",
+            "road_distance_provider": "Valhalla_OSM",
+        },
         "recommendation_criteria": [
             "兴趣类别及现有PostGIS类别匹配",
             "仅使用数据库实际存在且与需求词匹配的旅游标签",
