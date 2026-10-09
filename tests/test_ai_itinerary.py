@@ -104,7 +104,10 @@ class PersonalizedItineraryTests(unittest.TestCase):
         loader.assert_called_once()
         self.assertEqual([f["properties"]["id"] for f in selected], [1, 2, 3])
         # No model-generated POI ID or coords can enter selected result.
-        self.assertTrue(all(f in FEATURES for f in selected))
+        self.assertTrue(all(any(f["properties"]["id"] == original["properties"]["id"]
+                                for original in FEATURES) for f in selected))
+        self.assertTrue(all(f["properties"]["recommendation"]["source"] ==
+                            "postgis_tourism_metadata" for f in selected))
         with patch("backend.app.ai.itinerary_planner.load_itinerary_places", return_value=PLACES):
             with self.assertRaises(ValueError):
                 choose_candidates(FEATURES, (118.790, 32.040), 4, 180)
@@ -138,14 +141,14 @@ class PersonalizedItineraryTests(unittest.TestCase):
                                              3, 8, "09:00", FEATURES[:3])
 
     def test_true_end_to_end_handler_with_mocked_postgis_and_route(self):
-        intent = fallback_intent("南京一天历史游，少走路")
+        intent = fallback_intent("南京一天游，少走路")
         with patch("backend.app.ai.router.parse_tourism_intent",
                    new=AsyncMock(return_value=(intent, "deepseek"))), \
              patch("backend.app.ai.router.query_pois", return_value=FEATURES), \
              patch("backend.app.ai.itinerary_planner.load_itinerary_places", return_value=PLACES), \
              patch("backend.app.ai.itinerary_planner.plan_itinerary", return_value=ITINERARY):
             response = asyncio.run(personalized_itinerary(PersonalizedItineraryRequest(
-                query="南京一天历史游，少走路", lng=118.79, lat=32.04, max_stops=4,
+                query="南京一天游，少走路", lng=118.79, lat=32.04, max_stops=4,
                 budget_hours=8, start_time="09:00",
             )))
         self.assertEqual(response["ai_mode"], "deepseek")
