@@ -1,0 +1,54 @@
+// Layout contract checks: keep map controls usable and prevent independent
+// absolutely positioned panels from covering the route comparison.
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+const read = path => readFileSync(new URL('../frontend/' + path, import.meta.url), 'utf8')
+
+const app = read('src/App.vue')
+const css = read('src/style.css')
+const theme = read('src/components/ThemePanel.vue')
+const stats = read('src/components/StatisticsPanel.vue')
+const route = read('src/components/RoutePanel.vue')
+const ai = read('src/components/NaturalSearchPanel.vue')
+const preview = read('src/components/ItineraryPreviewPanel.vue')
+const detail = read('src/components/PlaceDetailPanel.vue')
+
+const rootTemplate = app.split('<template>')[1].split('</template>')[0]
+assert(rootTemplate.includes('class="map-toolbar"'), 'search/display controls share a toolbar')
+assert(rootTemplate.includes('class="category-filter"'), 'category bar remains present')
+assert(rootTemplate.includes('class="left-workspace"'), 'search and AI share the left rail')
+assert(rootTemplate.includes('class="right-workspace"'), 'routing, themes and statistics share the right rail')
+assert(
+  rootTemplate.indexOf('<RoutePanel') < rootTemplate.indexOf('<ThemePanel') &&
+  rootTemplate.indexOf('<ThemePanel') < rootTemplate.indexOf('<StatisticsPanel'),
+  'route comparison has priority over collapsible recommendations and statistics'
+)
+assert(rootTemplate.indexOf('<ItineraryPreviewPanel') < rootTemplate.indexOf('<NaturalSearchPanel'))
+assert(rootTemplate.includes('@change-mode="selectRoadMode"'), 'transport mode switching remains wired')
+assert(rootTemplate.includes('@calculate-road="calculateRoadRoute"'), 'Valhalla requests remain wired')
+assert(rootTemplate.includes('@toggle-route="selectedPlace && toggleRoutePlace(selectedPlace)"'))
+assert(rootTemplate.includes('aria-label="南京景点地图"'))
+
+for (const [name, component, classname] of [
+  ['RoutePanel', route, 'route-panel'],
+  ['ThemePanel', theme, 'theme-panel'],
+  ['StatisticsPanel', stats, 'statistics-panel'],
+  ['NaturalSearchPanel', ai, 'natural-search'],
+  ['ItineraryPreviewPanel', preview, 'preview-panel']
+]) {
+  const style = component.split('<style scoped>')[1]?.split('</style>')[0]
+  assert(style, name + ' has scoped styles')
+  assert(
+    new RegExp('\\.' + classname + '\\s*\\{[^}]*position:\\s*relative').test(style),
+    name + ' is docked instead of independently positioned over the map'
+  )
+}
+assert(theme.includes('<details>') && !theme.includes('<details open'), 'themes collapse initially')
+assert(stats.includes('const expanded = ref(false)'), 'statistics collapse initially')
+assert(app.includes('.right-workspace > .route-panel'), 'right route panel receives available height')
+assert(app.includes('overflow-y: auto;'), 'rails and lists can scroll rather than overflow')
+assert(app.includes('@media (max-width: 760px)'), 'small screens have independent layouts')
+assert(detail.includes('right: calc(var(--rail-width, 320px) + 28px)'), 'details avoid desktop route rail')
+assert(detail.includes('@media (max-width: 1180px)'), 'details remain reachable on narrow displays')
+assert(!css.includes('width: 1126px'), 'Vite starter max-width restriction is removed')
+console.log('PASS: workspace hierarchy, no floating-panel overlap CSS, responsive layout and existing route actions')
