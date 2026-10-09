@@ -560,6 +560,36 @@ const applyNaturalResults = (collection) => {
   if (searchResults.value.length) frameResults(searchResults.value)
 }
 
+const applyAiPlan = (plan) => {
+  if (!map || !mapReady.value || loading.value) return
+  const places = plan?.selected_places?.features
+  const result = plan?.itinerary
+  const ids = result?.optimized_order_ids
+  if (!Array.isArray(places) || !Array.isArray(ids) ||
+      ids.length < 3 || ids.length > 6 || places.length !== ids.length ||
+      !Object.prototype.hasOwnProperty.call(roadModeColors, result.mode) ||
+      result.geometry?.type !== 'FeatureCollection' ||
+      result.geometry.features?.length !== ids.length - 1) return
+  const byId = new Map(places.map(place => [place.properties?.id, place]))
+  if (byId.size !== ids.length || ids.some(id => !byId.has(id))) return
+
+  exitThemeMode()
+  showFavoritesOnly.value = false
+  clearPopup()
+  closePlaceDetail()
+  const ordered = ids.map(id => byId.get(id))
+  searchResults.value = ordered
+  map.getSource('places')?.setData({ type: 'FeatureCollection', features: ordered })
+  roadMode.value = result.mode
+  selectedRoutePlaces.value = ordered
+  // Preserve exactly the computed geometry and avoid recalculating travel with straight lines.
+  updateRoute()
+  multiResults.value = { [result.mode]: result }
+  showMultiRoute(result)
+  searchMessage.value = ''
+  frameResults(ordered)
+}
+
 const setMapDisplayMode = (mode) => {
   if (!map?.getLayer('places-points') || !map.getLayer('places-heatmap')) return
 
@@ -881,7 +911,7 @@ onUnmounted(() => {
         <ItineraryPreviewPanel :map-ready="mapReady" :center="naturalSearchCenter"
           @route="applyItineraryPreview" />
         <NaturalSearchPanel :map-ready="mapReady" :center="naturalSearchCenter"
-          @results="applyNaturalResults" @route="applyItineraryPreview" />
+          @results="applyNaturalResults" @route="applyItineraryPreview" @planned="applyAiPlan" />
       </div>
     </section>
 
