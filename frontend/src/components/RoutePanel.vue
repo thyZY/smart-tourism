@@ -1,4 +1,6 @@
 <script setup>
+import { computed } from 'vue'
+
 const transportModes = [
   { value: 'pedestrian', label: '🚶 步行' },
   { value: 'bicycle', label: '🚲 骑行' },
@@ -21,6 +23,14 @@ const props = defineProps({
 
 defineEmits(['clear', 'calculate-road', 'calculate-multi', 'change-mode'])
 
+const routingPoints = computed(() =>
+  props.places.length === 2
+    ? props.roadRoute?.routing_points ?? []
+    : props.multiRoute?.routing_points ?? []
+)
+const reviewedEntranceCount = computed(() =>
+  routingPoints.value.filter(point => point.kind === 'reviewed_access_point').length
+)
 const resultFor = mode => props.places.length === 2
   ? props.roadResults[mode]?.properties
   : props.multiResults[mode]
@@ -58,6 +68,25 @@ const resultFor = mode => props.places.length === 2
         {{ multiPending ? '正在计算道路时间矩阵…'
           : multiResults[roadMode] ? '重新优化当前交通方式' : '按道路时间优化多站顺序' }}
       </button>
+
+      <details v-if="routingPoints.length" class="access-summary">
+        <summary>道路入口资料：{{ reviewedEntranceCount }}/{{ routingPoints.length }} 站使用已审核入口</summary>
+        <p v-if="reviewedEntranceCount < routingPoints.length">
+          其余站点仍使用景点原坐标寻路，不能视为经过验证的出入口，可能产生路网吸附或绕行。
+        </p>
+        <p>紫色圆点仅标识已审核入口；红色景点标记仍表示原POI位置。
+          资料审核不代表入口实时开放或该交通方式始终可通行。</p>
+        <ul>
+          <li v-for="point in routingPoints" :key="point.id">
+            <strong>{{ point.name }}</strong>：
+            <template v-if="point.kind === 'reviewed_access_point'">
+              {{ point.access_name }}（审核日期：{{ point.reviewed_on }}）
+              <a :href="point.source_url" target="_blank" rel="noopener noreferrer">来源</a>
+            </template>
+            <template v-else>入口未核实，使用景点原坐标</template>
+          </li>
+        </ul>
+      </details>
 
       <template v-if="places.length === 2 && roadRoute">
         <p class="road-result">道路距离：{{ roadRoute.distance_km.toFixed(3) }} km</p>
@@ -154,4 +183,9 @@ h2 { font-size: 18px; }
 .multi-heading { font-size: 13px; margin: 12px 0 5px; color: #1d4ed8; }
 .multi-stops { margin: 6px 0 4px; padding-left: 22px; max-height: 170px; overflow-y: auto; font-size: 13px; line-height: 1.7; }
 .multi-stops small { color: #64748b; font-size: 11px; }
+.access-summary { margin-top: 9px; border: 1px solid #d8e3f5; padding: 7px; border-radius: 7px; font-size: 11px; background: #f7f9fd; }
+.access-summary summary { cursor: pointer; color: #3b4488; font-weight: 600; }
+.access-summary ul { padding-left: 16px; line-height: 1.6; }
+.access-summary p { color: #566378; margin: 6px 0; line-height: 1.45; }
+.access-summary a { color: #214bbb; }
 </style>
