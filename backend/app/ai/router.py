@@ -160,7 +160,7 @@ async def personalized_itinerary(request: PersonalizedItineraryRequest):
     features = await asyncio.to_thread(query_pois, intent, origin)
     try:
         # Early validation before entering the public routing service.
-        await asyncio.to_thread(
+        selected = await asyncio.to_thread(
             choose_candidates, features, origin, request.max_stops, request.budget_hours * 60
         )
     except ValueError as exc:
@@ -168,7 +168,7 @@ async def personalized_itinerary(request: PersonalizedItineraryRequest):
     try:
         plan = await asyncio.to_thread(
             build_personalized_itinerary, features, origin, intent,
-            mode, request.max_stops, request.budget_hours, request.start_time,
+            mode, request.max_stops, request.budget_hours, request.start_time, selected,
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail="景点资料已发生变化，请重新搜索") from exc
