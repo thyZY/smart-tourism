@@ -287,6 +287,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--online", action="store_true", help="Query live public OSM Overpass")
+    group.add_argument("--queries-only", action="store_true",
+                       help="Print Overpass Turbo queries without any network request")
     group.add_argument("--osm-json-dir", type=Path,
                        help="Local Overpass JSON snapshots named <candidate_id>.json")
     parser.add_argument("--radius-m", type=int, default=180)
@@ -295,6 +297,14 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         evidence = json.loads(EVIDENCE.read_text(encoding="utf-8"))
+        if args.queries_only:
+            for candidate in evidence["candidates"]:
+                raw = candidate["raw_platform_position"]
+                lng, lat = gcj02_to_wgs84(raw["longitude"], raw["latitude"])
+                print(f"=== {candidate['name']} ===")
+                print(build_query(lng, lat, args.radius_m))
+            print("Paste each query into https://overpass-turbo.eu/ and export JSON.")
+            return 0
         report = audit(evidence, args.osm_json_dir, args.online,
                        args.radius_m, args.endpoint)
         args.out.parent.mkdir(parents=True, exist_ok=True)
