@@ -21,7 +21,10 @@ def load_itinerary_places(ids):
         with conn.cursor() as cursor:
             cursor.execute(
                 """SELECT p.id, p.name, ST_X(p.geom), ST_Y(p.geom),
-                          to_jsonb(p)->>'visit_duration'
+                          to_jsonb(p)->>'visit_duration',
+                          to_jsonb(p)->'tags',
+                          to_jsonb(p)->>'indoor',
+                          to_jsonb(p)->>'description'
                    FROM places p WHERE p.id = ANY(%s)""",
                 (ids,),
             )
@@ -29,7 +32,14 @@ def load_itinerary_places(ids):
     finally:
         conn.close()
     places = {}
-    for ident, name, lon, lat, minutes in rows:
+    for row in rows:
+        # Optional tourism columns are read via to_jsonb and may be absent
+        # before the metadata migration. Existing 5-field test fixtures
+        # remain compatible with this read-only enrichment.
+        ident, name, lon, lat, minutes = row[:5]
+        tags = row[5] if len(row) > 5 else None
+        indoor = row[6] if len(row) > 6 else None
+        description = row[7] if len(row) > 7 else None
         visit = None
         if minutes is not None:
             try:
@@ -40,6 +50,13 @@ def load_itinerary_places(ids):
         places[ident] = {
             "id": ident, "name": name, "lon": lon, "lat": lat,
             "visit_duration": visit,
+            "tags": [tag.strip() for tag in tags
+                     if isinstance(tag, str) and tag.strip()][:12]
+            if isinstance(tags, list) else [],
+            "indoor": indoor if type(indoor) is bool else
+            True if indoor == "true" else False if indoor == "false" else None,
+            "description": description.strip()[:600]
+            if isinstance(description, str) else "",
         }
     if any(ident not in places for ident in ids):
         raise LookupError("部分景点ID不存在，无法计算多站路线")
