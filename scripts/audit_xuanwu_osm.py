@@ -18,11 +18,13 @@ import sys
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE = ROOT / "data" / "entrance_evidence" / "xuanwu_lake_20261010.json"
 OUT = ROOT / "data" / "entrance_evidence" / "xuanwu_lake_osm_audit_local.json"
 OSM_ENDPOINT = "https://overpass-api.de/api/interpreter"
+OSM_API_MAP = "https://api.openstreetmap.org/api/0.6/map.json"
 A = 6378245.0
 EE = 0.00669342162296594323
 PATH_KINDS = frozenset(("footway", "pedestrian", "path", "steps", "living_street"))
@@ -124,6 +126,46 @@ def fetch_overpass(query, endpoint=OSM_ENDPOINT, timeout=45):
     return result
 
 
+def osm_bbox_url(lng, lat, radius=180):
+    """Build a *small* bbox for the native OSM v0.6 JSON map API.
+
+    Unlike Overpass, /api/0.6/map.json returns nearby map objects without
+    executing resource-intensive Overpass QL. Keep this to two local
+    research requests, not a bulk download. Bbox covers a radius-sized circle.
+    """
+    if not 50 <= radius <= 350:
+        raise ValueError("Allowed OSM search radius is 50–350 metres")
+    if not (-180 <= lng <= 180 and -80 <= lat <= 80):
+        raise ValueError("Invalid map centre")
+    dy = radius / 111_320.0
+    dx = radius / (111_320.0 * math.cos(math.radians(lat)))
+    bbox = f"{lng-dx:.8f},{lat-dy:.8f},{lng+dx:.8f},{lat+dy:.8f}"
+    return OSM_API_MAP + "?bbox=" + bbox
+
+
+def fetch_osm_map(lng, lat, radius=180, timeout=45):
+    """Read source OSM nodes/ways as JSON; never calls an editing endpoint."""
+    url = osm_bbox_url(lng, lat, radius)
+    req = Request(url, headers={
+        "Accept": "application/json",
+        "User-Agent": "SmartTourism-Research-Entrance-Audit/0.1 (two small read-only bbox requests)",
+    })
+    try:
+        with urlopen(req, timeout=timeout) as response:
+            payload = response.read(8_000_001)
+    except (HTTPError, URLError, TimeoutError, OSError) as exc:
+        raise RuntimeError(f"OSM map API unavailable: {exc}") from exc
+    if len(payload) > 8_000_000:
+        raise ValueError("OSM map response too large; reduce --radius-m")
+    try:
+        result = json.loads(payload)
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise ValueError("OSM API did not return valid JSON") from exc
+    if not isinstance(result, dict) or not isinstance(result.get("elements"), list):
+        raise ValueError("OSM API did not return JSON with elements list")
+    return result
+
+
 def _walkable(tags):
     return (
         tags.get("highway") in PATH_KINDS
@@ -211,15 +253,16 @@ def inspect_osm(payload, lng, lat, radius=180):
     }
 
 
-def audit(evidence, snapshots=None, online=False, radius=180, endpoint=OSM_ENDPOINT):
-    if not online and snapshots is None:
-        raise ValueError("Specify --online or --osm-json-dir; no implicit OSM network access")
+def audit(evidence, snapshots=None, online=False, radius=180, endpoint=OSM_ENDPOINT,
+          osm_api=False):
+    if not online and snapshots is None and not osm_api:
+        raise ValueError("Specify --online, --osm-api or --osm-json-dir; no implicit network access")
     result = {
         "status": "research_only_unreviewed",
         "generated_utc": datetime.now(timezone.utc).isoformat(),
         "source_dataset_id": evidence["dataset_id"],
         "osm_attribution": "© OpenStreetMap contributors (ODbL)",
-        "osm_endpoint": endpoint if online else "offline_json_snapshot",
+        "osm_endpoint": endpoint if online else OSM_API_MAP if osm_api else "offline_json_snapshot",
         "radius_metres": radius,
         "entrances": [],
         "routing_activation": "none",
@@ -233,6 +276,8 @@ def audit(evidence, snapshots=None, online=False, radius=180, endpoint=OSM_ENDPO
         query = build_query(lng, lat, radius)
         if online:
             osm = fetch_overpass(query, endpoint)
+        elif osm_api:
+            osm = fetch_osm_map(lng, lat, radius)
         else:
             filename = Path(snapshots) / (candidate["candidate_id"] + ".json")
             osm = json.loads(filename.read_text(encoding="utf-8"))
@@ -287,6 +332,10 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--online", action="store_true", help="Query live public OSM Overpass")
+    group.add_argument("--osm-api", action="store_true",
+                       help="Use two small OSM native map.json bbox downloads (no Overpass)")
+    group.add_argument("--osm-api-urls-only", action="store_true",
+                       help="Print native OSM map.json download URLs; no network access")
     group.add_argument("--queries-only", action="store_true",
                        help="Print Overpass Turbo queries without any network request")
     group.add_argument("--osm-json-dir", type=Path,
@@ -297,16 +346,22 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         evidence = json.loads(EVIDENCE.read_text(encoding="utf-8"))
-        if args.queries_only:
+        if args.queries_only or args.osm_api_urls_only:
             for candidate in evidence["candidates"]:
                 raw = candidate["raw_platform_position"]
                 lng, lat = gcj02_to_wgs84(raw["longitude"], raw["latitude"])
                 print(f"=== {candidate['name']} ===")
-                print(build_query(lng, lat, args.radius_m))
-            print("Paste each query into https://overpass-turbo.eu/ and export JSON.")
+                if args.osm_api_urls_only:
+                    print(osm_bbox_url(lng, lat, args.radius_m))
+                else:
+                    print(build_query(lng, lat, args.radius_m))
+            if args.osm_api_urls_only:
+                print("Open each URL in a browser. Save JSON under the matching candidate ID.")
+            else:
+                print("Paste each query into https://overpass-turbo.eu/ and export JSON.")
             return 0
         report = audit(evidence, args.osm_json_dir, args.online,
-                       args.radius_m, args.endpoint)
+                       args.radius_m, args.endpoint, args.osm_api)
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(
             json.dumps(report, ensure_ascii=False, indent=2) + "\n",
