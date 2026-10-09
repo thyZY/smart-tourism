@@ -291,7 +291,8 @@ async def conversational_edit_preview(request: ConversationalPreviewRequest):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     names = [item["properties"]["name"] for item in current]
     operations, mode = await parse_chat_edit(
-        request.message, names, [h.model_dump() for h in request.history]
+        request.message, names, [h.model_dump() for h in request.history],
+        candidate_names=[p["properties"]["name"] for p in candidates],
     )
     try:
         preview = propose_edit(
