@@ -237,9 +237,10 @@ async def edited_itinerary(request: EditItineraryRequest):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except (HTTPError, URLError, OSError, TimeoutError, KeyError) as exc:
+    except (HTTPError, URLError, OSError, TimeoutError,
+            KeyError, ValueError, TypeError) as exc:
+        # All client inputs were validated before reaching the provider.
+        # An invalid matrix/polyline is a provider-data failure, not 422.
         raise HTTPException(
             status_code=502,
             detail="道路时间矩阵或分段路线不可用，无法可靠地重新规划",
