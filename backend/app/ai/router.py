@@ -260,6 +260,7 @@ class ConversationalPreviewRequest(BaseModel):
     budget_hours: int = Field(default=8, ge=3, le=12)
     start_time: str = Field(default="09:00", pattern=r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
     history: list[ChatHistoryTurn] = Field(default_factory=list, max_length=6)
+    auto_trim: bool = True
 
 
 @router.post("/itinerary/chat/preview")
@@ -298,7 +299,7 @@ async def conversational_edit_preview(request: ConversationalPreviewRequest):
         preview = propose_edit(
             operations, request.place_ids, request.locked_place_ids,
             request.transport_mode, request.budget_hours, request.start_time,
-            current, candidates,
+            current, candidates, request.auto_trim,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -308,6 +309,7 @@ async def conversational_edit_preview(request: ConversationalPreviewRequest):
         "transport_mode": request.transport_mode,
         "budget_hours": request.budget_hours,
         "start_time": request.start_time,
+        "auto_trim": request.auto_trim,
     }
     preview["mode"] = mode
     preview["reply"] = "已找到可执行修改，请核对预览并手动确认；确认前地图与原路线不会改变。"
