@@ -43,6 +43,9 @@ const context = vm.createContext({
   onUnmounted: fn => { unmounted = fn },
   nextTick: () => Promise.resolve(),
   Map: function () { return map }, NavigationControl: function () {},
+  LngLatBounds: class {
+    extend() { return this }
+  },
   setWorkerUrl() {}, workerUrl: '', AbortController, localStorage, themes,
   document: { querySelector: () => null },
   axios: {
