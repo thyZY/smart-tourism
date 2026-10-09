@@ -11,7 +11,7 @@ from backend.app.ai.router import PersonalizedItineraryRequest, personalized_iti
 from backend.app.ai.itinerary_planner import (
     build_personalized_itinerary, build_timeline, choose_candidates, resolve_travel_mode,
 )
-from backend.app.ai.tourism_agent import fallback_intent
+from backend.app.ai.tourism_agent import fallback_intent, normalize_model_intent
 
 
 def place(ident, lon, lat, category="历史文化"):
@@ -78,6 +78,25 @@ class PersonalizedItineraryTests(unittest.TestCase):
                     query="南京两天旅游", lng=118.79, lat=32.04,
                 )))
         self.assertEqual(error.exception.status_code, 422)
+
+    def test_explicit_requirements_override_unreliable_model(self):
+        intent = normalize_model_intent({
+            "categories": ["历史文化"],
+            "avoid_categories": [], "nearby": False,
+            "duration_days": 3, "walking_level": "normal",
+        }, "南京一天历史文化游，少走路")
+        self.assertEqual(intent["duration_days"], 1)
+        self.assertEqual(intent["walking_level"], "low")
+
+    def test_reject_single_day_window_spanning_midnight(self):
+        with patch("backend.app.ai.router.parse_tourism_intent",
+                   new=AsyncMock(return_value=(fallback_intent("一天游"), "rule_based"))):
+            with self.assertRaises(HTTPException) as failure:
+                asyncio.run(personalized_itinerary(PersonalizedItineraryRequest(
+                    query="一天游", lng=118.79, lat=32.04, start_time="22:00",
+                    budget_hours=8,
+                )))
+        self.assertEqual(failure.exception.status_code, 422)
 
     def test_choose_candidates_from_real_ids_and_dwell_budget(self):
         with patch("backend.app.ai.itinerary_planner.load_itinerary_places", return_value=PLACES) as loader:
