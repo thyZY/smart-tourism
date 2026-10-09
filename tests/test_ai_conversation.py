@@ -74,6 +74,15 @@ class ConversationPreviewTests(unittest.TestCase):
         )
         self.assertEqual(preview["proposed"]["place_ids"], [1, 5, 3, 4])
 
+    def test_preview_respects_no_auto_trim(self):
+        preview = propose_edit(
+            [{"action": "mode", "mode": "bicycle"}],
+            [1, 2, 3], [], "auto", 8, "09:00",
+            CURRENT[:3], CANDIDATES, auto_trim=False,
+        )
+        self.assertFalse(preview["proposed"]["auto_trim"])
+        self.assertEqual(preview["proposed"]["transport_mode"], "bicycle")
+
     def test_lock_named_stop_and_refuse_replace(self):
         ops = rule_operations("南京总统府必须保留",
                               [p["properties"]["name"] for p in CURRENT])
