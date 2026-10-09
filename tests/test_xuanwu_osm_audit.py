@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "audit_xuanwu_osm.py"
@@ -133,6 +134,64 @@ class XuanwuOSMAuditTests(unittest.TestCase):
         self.assertIn("玄武湖景区（解放门）", text)
         self.assertEqual(text.count("[out:json]"), 2)
         self.assertIn("https://overpass-turbo.eu/", text)
+
+    def test_native_osm_bbox_url_is_small_and_api_is_json(self):
+        url = audit.osm_bbox_url(118.7823, 32.07258)
+        self.assertTrue(url.startswith(
+            "https://api.openstreetmap.org/api/0.6/map.json?bbox="))
+        from urllib.parse import parse_qs, urlsplit
+        left, bottom, right, top = map(
+            float, parse_qs(urlsplit(url).query)["bbox"][0].split(","))
+        self.assertLess(right-left, .01)
+        self.assertLess(top-bottom, .01)
+        self.assertLess(left, 118.7823)
+        self.assertGreater(right, 118.7823)
+        self.assertLess(bottom, 32.07258)
+        self.assertGreater(top, 32.07258)
+        with self.assertRaises(ValueError):
+            audit.osm_bbox_url(118.7823, 32.07258, 900)
+
+    def test_native_osm_json_adapter_and_read_only_request(self):
+        from io import BytesIO
+        lng, lat = 118.7823, 32.07258
+        data = json.dumps(sample_osm(lng, lat)).encode("utf-8")
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *_): return False
+            def read(self, size): return data[:size]
+        with patch.object(audit, "urlopen", return_value=Response()) as fetch:
+            payload = audit.fetch_osm_map(lng, lat)
+        req = fetch.call_args.args[0]
+        self.assertEqual(req.get_method(), "GET")
+        self.assertIn("/api/0.6/map.json?bbox=", req.full_url)
+        self.assertIn("application/json", req.get_header("Accept"))
+        matched = audit.inspect_osm(payload, lng, lat)
+        self.assertEqual(matched["candidate_count"], 2)
+        self.assertTrue(matched["gate_nodes"][0]["is_member_of_walkable_osm_way"])
+
+    def test_native_map_api_audit_never_promotes_unreviewed_entrances(self):
+        def synthetic_fetch(lng, lat, radius):
+            return sample_osm(lng, lat)
+        with patch.object(audit, "fetch_osm_map", side_effect=synthetic_fetch) as calls:
+            report = audit.audit(EVIDENCE, osm_api=True)
+        self.assertEqual(calls.call_count, 2)
+        self.assertEqual(report["routing_activation"], "none")
+        self.assertEqual(report["osm_endpoint"], audit.OSM_API_MAP)
+        self.assertTrue(all(
+            e["osm_result"]["gate_nodes"][0]["not_automatically_approved"]
+            for e in report["entrances"]
+        ))
+
+    def test_print_native_api_download_links_without_network(self):
+        from io import StringIO
+        from contextlib import redirect_stdout
+        capture = StringIO()
+        with patch.object(audit, "urlopen", side_effect=AssertionError("No network")):
+            with redirect_stdout(capture):
+                exit_code = audit.main(["--osm-api-urls-only"])
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(capture.getvalue().count(
+            "https://api.openstreetmap.org/api/0.6/map.json?bbox="), 2)
 
     def test_no_implicit_network_or_database_side_effect(self):
         with self.assertRaises(ValueError):
