@@ -32,11 +32,11 @@ const map = {
   getLayer(id) { return this.layers[id] },
   getSource(id) { return this.sources[id] }, stop() {}, getBounds() { this.boundsCalls++; return bounds },
   setLayoutProperty(id, property, value) { this.layoutProperties.push({ id, property, value }) },
-  setPaintProperty() { this.paintUpdates++ },
+  setPaintProperty(id, property, value) { this.paintUpdates++; this.paintProperties.push({ id, property, value }) },
   getCenter() { return { lng: 118.7921, lat: 32.0407 } },
   flyTo() { this.flyToCalls++ }, fitBounds() { this.fitBoundsCalls++ }, remove() { this.removed = true },
   boundsCalls: 0, flyToCalls: 0, fitBoundsCalls: 0,
-  layers: {}, sources: {}, handlers: {}, layoutProperties: [], paintUpdates: 0
+  layers: {}, sources: {}, handlers: {}, layoutProperties: [], paintProperties: [], paintUpdates: 0
 }
 const context = vm.createContext({
   ref: value => ({ value }), onMounted: fn => { mounted = fn },
@@ -51,7 +51,7 @@ const context = vm.createContext({
     post: (url, data, options) => new Promise((resolve, reject) => requests.push({ url, data, options, resolve, reject }))
   }
 })
-vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, selectTheme, selectedTheme, focusResult, closePlaceDetail, toggleRoutePlace, clearRoute, toggleFavorite, showFavoritePlaces, isFavorite, favoritePlaceIds, showFavoritesOnly, selectedRoutePlaces, routeDistanceKm, calculateRoadRoute, roadRoute, roadRoutePending, roadRouteError, selectedPlace, selectedPlaceId, tourismCard, tourismLoading, tourismError, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
+vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, selectTheme, selectedTheme, focusResult, closePlaceDetail, toggleRoutePlace, clearRoute, toggleFavorite, showFavoritePlaces, isFavorite, favoritePlaceIds, showFavoritesOnly, selectedRoutePlaces, routeDistanceKm, calculateRoadRoute, selectRoadMode, roadMode, roadResults, roadRoute, roadRoutePending, roadRouteError, selectedPlace, selectedPlaceId, tourismCard, tourismLoading, tourismError, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
 const api = context.api
 const empty = { type: 'FeatureCollection', features: [] }
 const tick = () => new Promise(resolve => setImmediate(resolve))
@@ -252,11 +252,12 @@ const roadRequest = requests.at(-1)
 assert.equal(roadRequest.url, 'http://127.0.0.1:8010/api/routing/route')
 assert.equal(roadRequest.data.from_id, 1)
 assert.equal(roadRequest.data.to_id, 2)
+assert.equal(roadRequest.data.mode, 'pedestrian', 'walking is the default road mode')
 assert.equal(roadRequest.options.signal.aborted, false)
 assert.equal(api.roadRoutePending.value, true)
 roadRequest.resolve({ data: {
   type: 'Feature',
-  properties: { distance_km: 0.908, duration_minutes: 11.3 },
+  properties: { mode: 'pedestrian', distance_km: 0.908, duration_minutes: 11.3 },
   geometry: { type: 'LineString', coordinates: [
     [118.7921, 32.0407], [118.7901, 32.0397], [118.7877, 32.0270]
   ] }
@@ -265,6 +266,49 @@ await routingPending
 assert.equal(api.roadRoute.value.distance_km, 0.908, 'road distance comes from Valhalla not straight line')
 assert.equal(map.sources['road-route'].data.features.length, 1, 'GeoJSON road layer receives geometry')
 assert.equal(map.layoutProperties.at(-1).value, 'none', 'straight line hidden while road geometry is shown')
+assert.equal(map.paintProperties.at(-1).value, '#16a34a', 'walking route is green')
+assert.equal(api.roadResults.value.pedestrian.properties.distance_km, 0.908)
+
+api.selectRoadMode('bicycle')
+assert.equal(api.roadMode.value, 'bicycle')
+assert.equal(api.roadRoute.value, null, 'uncalculated mode does not reuse walking metrics')
+assert.equal(map.sources['road-route'].data.features.length, 0, 'switch to unknown mode clears old geometry')
+const bicyclePending = api.calculateRoadRoute()
+const bicycleRequest = requests.at(-1)
+assert.equal(bicycleRequest.data.mode, 'bicycle')
+bicycleRequest.resolve({ data: {
+  type: 'Feature',
+  properties: { mode: 'bicycle', distance_km: 1.95, duration_minutes: 8.5 },
+  geometry: { type: 'LineString', coordinates: [
+    [118.7921, 32.0407], [118.7901, 32.0397], [118.7877, 32.0270]
+  ] }
+} })
+await bicyclePending
+assert.equal(api.roadRoute.value.duration_minutes, 8.5, 'bike duration comes from its own provider result')
+assert.equal(map.paintProperties.at(-1).value, '#f97316', 'cycling route is orange')
+
+api.selectRoadMode('auto')
+assert.equal(api.roadResults.value.pedestrian.properties.distance_km, 0.908)
+assert.equal(api.roadResults.value.bicycle.properties.duration_minutes, 8.5)
+const autoPending = api.calculateRoadRoute()
+const autoRequest = requests.at(-1)
+assert.equal(autoRequest.data.mode, 'auto')
+autoRequest.resolve({ data: {
+  type: 'Feature',
+  properties: { mode: 'auto', distance_km: 2.32, duration_minutes: 6.2 },
+  geometry: { type: 'LineString', coordinates: [
+    [118.7921, 32.0407], [118.7901, 32.0397], [118.7877, 32.0270]
+  ] }
+} })
+await autoPending
+assert.equal(api.roadRoute.value.distance_km, 2.32)
+assert.equal(map.paintProperties.at(-1).value, '#2563eb', 'driving route is blue')
+const requestsBeforeCache = requests.length
+api.selectRoadMode('pedestrian')
+assert.equal(requests.length, requestsBeforeCache, 'switching to calculated mode uses local cache')
+assert.equal(api.roadRoute.value.distance_km, 0.908)
+assert.equal(map.paintProperties.at(-1).value, '#16a34a', 'cached walking route redraws green')
+
 const route = map.sources['route-line'].data.features[0].geometry
 assert.deepEqual(JSON.parse(JSON.stringify(route)), {
   type: 'LineString',
@@ -273,6 +317,7 @@ assert.deepEqual(JSON.parse(JSON.stringify(route)), {
 assert.ok(api.routeDistanceKm.value > 1 && api.routeDistanceKm.value < 2, 'route distance uses haversine kilometers')
 api.toggleRoutePlace(museum)
 assert.equal(api.roadRoute.value, null, 'changing selected POIs invalidates previous road distance')
+assert.equal(Object.keys(api.roadResults.value).length, 0, 'changing POIs clears all modes cached for former pair')
 assert.equal(map.sources['road-route'].data.features.length, 0, 'changing selected POIs clears road geometry')
 assert.equal(map.layoutProperties.at(-1).value, 'visible', 'straight line restored on route change')
 assert.equal(api.selectedRoutePlaces.value.length, 1, 'selecting an existing place removes it')
