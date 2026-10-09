@@ -38,7 +38,7 @@ class FailingClient:
 
 class TourismAiTests(unittest.TestCase):
     def test_existing_routes_and_new_ai_route_registered(self):
-        paths = {r.path for r in app.routes if hasattr(r, "path")}
+        paths = set(app.openapi()["paths"])
         for route in (
             "/api/ai/tourism-search",
             "/api/places",
