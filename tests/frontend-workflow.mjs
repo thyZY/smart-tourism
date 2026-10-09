@@ -51,7 +51,7 @@ const context = vm.createContext({
     post: (url, data, options) => new Promise((resolve, reject) => requests.push({ url, data, options, resolve, reject }))
   }
 })
-vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, selectTheme, selectedTheme, focusResult, closePlaceDetail, toggleRoutePlace, clearRoute, toggleFavorite, showFavoritePlaces, isFavorite, favoritePlaceIds, showFavoritesOnly, selectedRoutePlaces, routeDistanceKm, calculateRoadRoute, selectRoadMode, roadMode, roadResults, roadRoute, roadRoutePending, roadRouteError, selectedPlace, selectedPlaceId, tourismCard, tourismLoading, tourismError, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
+vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, selectTheme, selectedTheme, focusResult, closePlaceDetail, toggleRoutePlace, clearRoute, toggleFavorite, showFavoritePlaces, isFavorite, favoritePlaceIds, showFavoritesOnly, selectedRoutePlaces, routeDistanceKm, calculateRoadRoute, calculateMultiRoute, selectRoadMode, roadMode, roadResults, roadRoute, roadRoutePending, roadRouteError, multiRoute, multiPending, multiResults, multiError, selectedPlace, selectedPlaceId, tourismCard, tourismLoading, tourismError, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
 const api = context.api
 const empty = { type: 'FeatureCollection', features: [] }
 const tick = () => new Promise(resolve => setImmediate(resolve))
@@ -315,6 +315,53 @@ assert.deepEqual(JSON.parse(JSON.stringify(route)), {
   coordinates: [[118.7921, 32.0407], [118.7877, 32.0270]]
 }, 'route line preserves selection order')
 assert.ok(api.routeDistanceKm.value > 1 && api.routeDistanceKm.value < 2, 'route distance uses haversine kilometers')
+
+// Existing two-stop routing must survive while 3-stop road-matrix rendering is added.
+api.toggleRoutePlace(historicalSite)
+assert.equal(api.selectedRoutePlaces.value.length, 3)
+const multiPendingCall = api.calculateMultiRoute()
+const multiRequest = requests.at(-1)
+assert.equal(multiRequest.url, 'http://127.0.0.1:8010/api/routing/itinerary')
+assert.deepEqual(JSON.parse(JSON.stringify(multiRequest.data.place_ids)), [1, 2, 3])
+assert.equal(multiRequest.data.mode, 'pedestrian')
+assert.equal(api.multiPending.value, true)
+multiRequest.resolve({ data: {
+  mode: 'pedestrian', method: 'exact_shortest_road_time_fixed_first_stop',
+  original_order_ids: [1, 2, 3],
+  optimized_order_ids: [1, 3, 2],
+  ordered_stops: [
+    { id: 1, name: '南京博物院', visit_duration: 150 },
+    { id: 3, name: '中华门瓮城', visit_duration: 60 },
+    { id: 2, name: '夫子庙', visit_duration: 90 }
+  ],
+  distance_km: 2.8, duration_minutes: 31.5,
+  travel_minutes_saved_estimate: 8.2,
+  missing_visit_duration_count: 0,
+  total_plan_minutes: 331.5,
+  geometry: { type: 'FeatureCollection', features: [
+    { type: 'Feature', properties: { sequence: 1 }, geometry: { type: 'LineString',
+      coordinates: [[118.7921, 32.0407], [118.7800, 32.0200]] } },
+    { type: 'Feature', properties: { sequence: 2 }, geometry: { type: 'LineString',
+      coordinates: [[118.7800, 32.0200], [118.7877, 32.0270]] } }
+  ] }
+} })
+await multiPendingCall
+assert.equal(api.multiRoute.value.duration_minutes, 31.5)
+assert.equal(api.multiResults.value.pedestrian.optimized_order_ids[1], 3)
+assert.equal(map.sources['road-route'].data.features.length, 2, 'two actual road legs displayed')
+assert.equal(map.layoutProperties.at(-1).value, 'none', 'direct route hidden for valid multileg roads')
+const beforeCachedMulti = requests.length
+api.selectRoadMode('bicycle')
+assert.equal(api.multiRoute.value, null, 'uncalculated cycling must not inherit walking itinerary')
+api.selectRoadMode('pedestrian')
+assert.equal(requests.length, beforeCachedMulti, 'return to calculated multi route uses cache')
+assert.equal(api.multiRoute.value.optimized_order_ids[2], 2)
+api.toggleRoutePlace(historicalSite)
+assert.equal(api.multiRoute.value, null, 'editing stops invalidates multi itinerary')
+assert.equal(Object.keys(api.multiResults.value).length, 0, 'multi cache invalidated on stop change')
+assert.equal(map.sources['road-route'].data.features.length, 0)
+assert.equal(api.selectedRoutePlaces.value.length, 2)
+
 api.toggleRoutePlace(museum)
 assert.equal(api.roadRoute.value, null, 'changing selected POIs invalidates previous road distance')
 assert.equal(Object.keys(api.roadResults.value).length, 0, 'changing POIs clears all modes cached for former pair')
