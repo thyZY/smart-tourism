@@ -18,6 +18,7 @@ const searchQuery = ref('')
 const searchMessage = ref('')
 const searchResults = ref([])
 const leftView = ref('places') // 'places' | 'ai'; each rail keeps its own scroll position
+const previewExpanded = ref(false)
 const naturalSearchCenter = ref({ lng: 118.7969, lat: 32.0603 })
 const selectedPlaceId = ref(null)
 const selectedPlace = ref(null)
@@ -902,6 +903,7 @@ onUnmounted(() => {
       </div>
 
       <div v-show="leftView === 'places'" id="places-workspace" class="places-workspace"
+        :class="{ 'preview-expanded': previewExpanded }"
         role="tabpanel" aria-labelledby="places-tab">
         <div v-if="searchMessage" class="search-message" role="status">{{ searchMessage }}</div>
         <div v-if="searchResults.length" class="result-list">
@@ -929,7 +931,7 @@ onUnmounted(() => {
           </div>
         </div>
         <ItineraryPreviewPanel class="itinerary-tool" :map-ready="mapReady" :center="naturalSearchCenter"
-          @route="applyItineraryPreview" />
+          @expanded-change="previewExpanded = $event" @route="applyItineraryPreview" />
       </div>
 
       <div v-show="leftView === 'ai'" id="ai-workspace" class="ai-workspace"
@@ -1148,8 +1150,29 @@ body { overflow: hidden; }
   gap: 10px;
   overflow: hidden;
 }
-.places-workspace > .result-list { flex: 1 1 auto; min-height: 0; max-height: none; }
-.places-workspace > .itinerary-tool { flex: 0 1 auto; min-height: 0; }
+/* Shorter POI list + preview directly beneath it. Expanding the preview
+   deliberately reduces the list's allotted height, keeping both scrollable. */
+.places-workspace > .result-list {
+  flex: 0 1 auto;
+  height: min(51vh, 440px);
+  min-height: 0;
+  max-height: min(51vh, 440px);
+}
+.places-workspace > .itinerary-tool {
+  flex: 0 0 auto;
+  min-height: 0;
+  max-height: min(47vh, 420px);
+}
+.places-workspace.preview-expanded > .result-list {
+  flex: 0 1 auto;
+  height: min(31vh, 270px);
+  max-height: min(31vh, 270px);
+}
+.places-workspace.preview-expanded > .itinerary-tool {
+  flex: 0 1 auto;
+  max-height: min(47vh, 420px);
+}
+
 .ai-workspace > .natural-search {
   flex: 1 1 auto;
   min-height: 0;
@@ -1257,11 +1280,34 @@ body { overflow: hidden; }
     height: 42vh;
     width: var(--rail-width);
   }
-  .places-workspace > .result-list { max-height: none; }
+  /* On small screens the left pane has little height. Divide it instead
+     of allowing either panel to overlay the other. */
+  .places-workspace > .result-list {
+    flex: 1 1 0;
+    height: auto;
+    max-height: none;
+    min-height: 0;
+  }
+  .places-workspace > .itinerary-tool {
+    flex: 0 0 auto;
+    max-height: min(17vh, 140px);
+  }
+  .places-workspace.preview-expanded > .result-list {
+    flex: 1 1 0;
+    height: auto;
+    max-height: none;
+    min-height: 0;
+  }
+  .places-workspace.preview-expanded > .itinerary-tool {
+    flex: 1 1 auto;
+    max-height: 65%;
+    min-height: 0;
+  }
   .places-workspace, .ai-workspace { gap: 6px; }
 }
 @media (max-height: 680px) and (min-width: 761px) {
   .left-workspace, .right-workspace { --workspace-top: 110px; }
-  .places-workspace > .result-list { max-height: none; }
+  .places-workspace > .result-list { max-height: min(51vh, 440px); }
+  .places-workspace.preview-expanded > .result-list { max-height: min(31vh, 270px); }
 }
 </style>
