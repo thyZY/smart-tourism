@@ -142,3 +142,37 @@ def route_between_places(body: RoadRouteRequest):
         raise HTTPException(status_code=502, detail="道路寻路服务暂不可用，请稍后重试；现有直线预览仍可使用") from exc
     except (ValueError, KeyError, TypeError) as exc:
         raise HTTPException(status_code=502, detail="道路寻路服务未返回有效路线，请检查路网覆盖") from exc
+
+
+class MultiStopRequest(BaseModel):
+    place_ids: list[int] = Field(min_length=3, max_length=6)
+    mode: Literal["pedestrian", "bicycle", "auto"] = "pedestrian"
+
+
+@router.post("/itinerary")
+def route_multistop_itinerary(body: MultiStopRequest):
+    """Find minimal travel time over 3–6 selected POIs (first stop fixed).
+
+    Two network calls to Valhalla: time matrix + multi-leg route geometry.
+    On missing costs/route failures return a clear error; never fabricate roads.
+    """
+    if any(type(ident) is not int or ident <= 0 for ident in body.place_ids):
+        raise HTTPException(status_code=422, detail="景点ID必须为正整数")
+    if len(set(body.place_ids)) != len(body.place_ids):
+        raise HTTPException(status_code=422, detail="路线中的景点不能重复")
+    from .road_itinerary import plan_itinerary
+
+    try:
+        return plan_itinerary(body.place_ids, body.mode)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (HTTPError, URLError, OSError, TimeoutError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="道路时间矩阵或路线服务不可用，请稍后重试；保留原有直线预览",
+        ) from exc
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="道路网络缺少部分路段或返回无效数据，无法生成可靠的多站路线",
+        ) from exc
