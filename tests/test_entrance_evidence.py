@@ -28,7 +28,7 @@ class XuanwuLakeEntranceEvidenceTests(unittest.TestCase):
             self.assertTrue(entry["park_page_url"].startswith("https://www.xuanwuhu.net/"))
             self.assertIn("amap.com", urlsplit(
                 entry["raw_platform_position"]["source_url"]).hostname)
-            self.assertIn("NOT_WGS84", entry["raw_platform_position"]["coordinate_system"])
+            self.assertIn("do_not_use_as_WGS84", entry["raw_platform_position"]["coordinate_system"])
 
     def test_gcj_coords_stay_as_provenance_not_routing_wgs84(self):
         for entry in self.dataset["candidates"]:
@@ -56,7 +56,6 @@ class XuanwuLakeEntranceEvidenceTests(unittest.TestCase):
         vehicle = self.dataset["motor_vehicle_policy"]
         self.assertIsNone(vehicle["auto_entry"])
         self.assertEqual(vehicle["status"], "not_proven")
-        self.assertIn("No", "No auto access must be inferred")
         self.assertEqual(self.dataset["routing_activation"], "none; this research file does not change PostGIS or Valhalla routing")
 
 
