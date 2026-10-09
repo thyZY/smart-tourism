@@ -10,7 +10,8 @@ const route = ids => ({
   travel_mode: 'auto', budget_minutes: 480, start_time: '09:00',
   locked_place_ids: [],
 })
-const props = { plan: route([1, 2, 3, 4]), currentRouteIds: [1, 2, 3, 4], disabled: false }
+const props = { plan: route([1, 2, 3, 4]), currentRouteIds: [1, 2, 3, 4],
+  disabled: false, autoTrim: false }
 const requests = []
 const emissions = []
 let shouldFail = false
@@ -24,7 +25,7 @@ const axios = {
         base_state: {
           place_ids: [...body.place_ids], locked_place_ids: [...body.locked_place_ids],
           transport_mode: body.transport_mode, budget_hours: body.budget_hours,
-          start_time: body.start_time,
+          start_time: body.start_time, auto_trim: body.auto_trim,
         },
         proposed: { ...body, place_ids: [1, 5, 3, 4], locked_place_ids: [3],
           auto_trim: true },
@@ -64,6 +65,8 @@ const plain = value => JSON.parse(JSON.stringify(value))
 ui.input.value = '把第二站换成公园，第三站必须保留'
 await ui.send()
 assert.equal(ui.preview.value.needs_confirmation, true)
+assert.equal(requests[0].body.auto_trim, false, 'dialog obeys existing no-auto-trim selection')
+assert.equal(ui.preview.value.proposed.auto_trim, true, 'test service can propose a different trim mode')
 assert.equal(requests.length, 1, 'preview request must not call routing/replan')
 assert.deepEqual(plain(ui.preview.value.proposed.place_ids), [1, 5, 3, 4])
 assert.equal(emissions.length, 0, 'preview cannot mutate map')
