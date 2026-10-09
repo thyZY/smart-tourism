@@ -32,7 +32,7 @@ class MockHTTPResponse:
 
 class RoadRoutingTests(unittest.TestCase):
     def test_endpoint_registered(self):
-        self.assertIn("/api/routing/route", {route.path for route in app.routes if hasattr(route, "path")})
+        self.assertIn("/api/routing/route", set(app.openapi()["paths"]))
 
     def test_valhalla_polyline6_lon_lat_order(self):
         coords = decode_polyline6(SHAPE)
