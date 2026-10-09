@@ -69,9 +69,14 @@ def normalize_model_intent(raw, query):
     days = raw.get("duration_days")
     if type(days) is not int or days not in (1, 2, 3):
         days = local["duration_days"]
+    # Explicit text outranks model guesses, especially when a user says "一天".
+    if local["duration_days"] is not None:
+        days = local["duration_days"]
     walking = raw.get("walking_level")
     if walking not in ("low", "normal"):
         walking = local["walking_level"]
+    if local["walking_level"] == "low":
+        walking = "low"
     return {
         "categories": categories, "avoid_categories": avoid,
         "nearby": nearby, "radius_m": radius_m if nearby else None,
