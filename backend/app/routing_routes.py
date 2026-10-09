@@ -193,3 +193,48 @@ def route_multistop_itinerary(body: MultiStopRequest):
             status_code=502,
             detail="道路网络缺少部分路段或返回无效数据，无法生成可靠的多站路线",
         ) from exc
+
+
+@router.get("/access-coverage")
+def scenic_access_coverage():
+    """Read-only inventory: which POIs have usable mode-specific access points?
+
+    Safe before applying the optional migration: to_jsonb yields null.
+    Does not mark a source as officially validated; review is manual.
+    """
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT id, name, ST_X(geom), ST_Y(geom), "
+                "to_jsonb(places)->'routing_access' "
+                "FROM places ORDER BY id"
+            )
+            rows = cursor.fetchall()
+    finally:
+        conn.close()
+    from .access_points import MODES
+
+    reviewed_by_mode = {mode: 0 for mode in MODES}
+    details = []
+    for ident, name, longitude, latitude, access in rows:
+        poi = {
+            "id": ident, "name": name, "lon": longitude, "lat": latitude,
+            "routing_access": access if isinstance(access, dict) else None,
+        }
+        modes = {}
+        for mode in MODES:
+            result = apply_routing_access(poi, mode)
+            reviewed = result["routing_point"]["kind"] == "reviewed_access_point"
+            reviewed_by_mode[mode] += int(reviewed)
+            modes[mode] = "reviewed_access_point" if reviewed else "poi_coordinate_fallback"
+        details.append({"id": ident, "name": name, "modes": modes})
+    return {
+        "total_places": len(rows),
+        "reviewed_by_mode": reviewed_by_mode,
+        "fallback_by_mode": {
+            mode: len(rows) - reviewed_by_mode[mode] for mode in MODES
+        },
+        "places": details,
+        "notice": "仅统计字段完整、通过坐标合理性检查并标记为人工审核的入口；不代表入口实时开放或官方保证",
+    }
