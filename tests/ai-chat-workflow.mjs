@@ -28,7 +28,7 @@ const axios = {
           start_time: body.start_time, auto_trim: body.auto_trim,
         },
         proposed: { ...body, place_ids: [1, 5, 3, 4], locked_place_ids: [3],
-          auto_trim: true },
+          auto_trim: body.auto_trim },
         changes: ['第二站替换为数据库景点5', '锁定第三站'],
         selected_names: ['景点1', '景点5', '景点3', '景点4'],
         warnings: ['道路尚未核实'],
@@ -66,7 +66,7 @@ ui.input.value = '把第二站换成公园，第三站必须保留'
 await ui.send()
 assert.equal(ui.preview.value.needs_confirmation, true)
 assert.equal(requests[0].body.auto_trim, false, 'dialog obeys existing no-auto-trim selection')
-assert.equal(ui.preview.value.proposed.auto_trim, true, 'test service can propose a different trim mode')
+assert.equal(ui.preview.value.proposed.auto_trim, false, 'confirmation also preserves disabled auto trim')
 assert.equal(requests.length, 1, 'preview request must not call routing/replan')
 assert.deepEqual(plain(ui.preview.value.proposed.place_ids), [1, 5, 3, 4])
 assert.equal(emissions.length, 0, 'preview cannot mutate map')
