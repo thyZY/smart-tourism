@@ -105,7 +105,7 @@ class EditItineraryTests(unittest.TestCase):
 
     def test_without_auto_trim_overrun_is_disclosed(self):
         result = replan_edited_itinerary([1, 2, 3, 4], [], "pedestrian",
-                                         8, "09:00", False)
+                                         7, "09:00", False)
         self.assertIs(result["within_time_budget"], False)
         self.assertEqual(result["dropped_place_ids"], [])
         self.assertTrue(any("超出预算" in msg for msg in result["limitations"]))
@@ -145,6 +145,13 @@ class EditItineraryTests(unittest.TestCase):
             with self.assertRaises(HTTPException) as err:
                 asyncio.run(edited_itinerary(EditItineraryRequest(place_ids=[1, 2, 3])))
         self.assertEqual(err.exception.status_code, 404)
+
+    def test_invalid_provider_matrix_is_502(self):
+        with patch("backend.app.ai.itinerary_editor.plan_itinerary",
+                   side_effect=ValueError("invalid Valhalla matrix")):
+            with self.assertRaises(HTTPException) as err:
+                asyncio.run(edited_itinerary(EditItineraryRequest(place_ids=[1, 2, 3])))
+        self.assertEqual(err.exception.status_code, 502)
 
     def test_network_error_is_502_not_straight_line(self):
         with patch("backend.app.ai.itinerary_editor.plan_itinerary",
