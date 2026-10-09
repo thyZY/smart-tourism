@@ -962,6 +962,16 @@ git pull --ff-only
 坐标使用WGS84（EPSG:4326）。与OSM底图叠加，检查各点是否真的位于
 对应景区门的步行通道，排除附近地铁口或城墙地标。
 
+**如果Overpass访问失败**，可以先在PowerShell离线导出两处查询语句，复制到 [Overpass Turbo](https://overpass-turbo.eu/) 网页执行：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\audit_xuanwu_osm.py --queries-only
+```
+
+网页导出的Overpass JSON按候选ID保存到本地目录中的
+`xuanwumen_west.json` 和 `jiefangmen_south.json`，
+再用下面的离线解析命令。
+
 **如果Overpass访问失败**（例如429、连接超时），脚本会明确报错，
 不会创建虚假OSM节点或更新数据库。可以稍后重试，或通过网页版
 [Overpass Turbo](https://overpass-turbo.eu/) 手动执行JSON报告中的
