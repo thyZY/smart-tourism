@@ -55,6 +55,9 @@ assert(ai.includes("'/api/ai/itinerary'") || ai.includes("127.0.0.1:8010/api/ai/
        'AI panel has the personalized route endpoint')
 assert(ai.includes("planResult.timeline"), 'AI itinerary includes a provisional schedule')
 assert(ai.includes("planResult.limitations"), 'unverified constraints are disclosed')
+assert(ai.includes("planResult.recommendation_summary"), 'recommendation diversity is visible')
+assert(ai.includes("planResult.recommendation_criteria"), 'ranking rules can be inspected')
+assert(ai.includes("planResult.timeline"), 'grounded per-POI reasons remain in the timeline')
 assert(rootTemplate.includes('@toggle-route="selectedPlace && toggleRoutePlace(selectedPlace)"'))
 assert(rootTemplate.includes('aria-label="南京景点地图"'))
 
