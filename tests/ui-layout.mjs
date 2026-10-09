@@ -17,6 +17,13 @@ const rootTemplate = app.split('<template>')[1].split('</template>')[0]
 assert(rootTemplate.includes('class="map-toolbar"'), 'search/display controls share a toolbar')
 assert(rootTemplate.includes('class="category-filter"'), 'category bar remains present')
 assert(rootTemplate.includes('class="left-workspace"'), 'search and AI share the left rail')
+assert(rootTemplate.includes('class="left-view-tabs"'), 'AI and POI results have separate tabs')
+assert(rootTemplate.includes('v-show="leftView === \'places\'"'), 'POI list has its own pane')
+assert(rootTemplate.includes('v-show="leftView === \'ai\'"'), 'AI timeline has its own pane')
+assert(app.includes('.places-workspace, .ai-workspace'), 'left views are flex height-constrained')
+assert(app.includes('.places-workspace > .result-list'), 'result list scrolls inside list pane')
+assert(app.includes('.ai-workspace > .natural-search'), 'AI content scrolls in its own pane')
+assert(ai.includes('max-height: none;'), 'generated AI itinerary has no competing fixed height limit')
 assert(rootTemplate.includes('class="right-workspace"'), 'routing, themes and statistics share the right rail')
 assert(
   rootTemplate.indexOf('<RoutePanel') < rootTemplate.indexOf('<ThemePanel') &&
