@@ -91,7 +91,7 @@ def replan_edited_itinerary(place_ids, locked_ids, mode, budget_hours,
             full_metadata[ident]["visit_duration"] is None
             for ident in remaining
         )
-        if not missing_dwell and known_dwell > budget:
+        if known_dwell > budget:
             if not auto_trim or len(remaining) <= 3:
                 raise BudgetConflict("景点停留时间已经超过预算，请移除景点或延长时间")
             removed.append(_remove_optional_tail(remaining, locked))
