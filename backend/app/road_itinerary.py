@@ -13,6 +13,7 @@ import json
 
 from .db import get_db_connection
 from .routing_routes import decode_polyline6
+from .access_points import apply_routing_access, routing_provenance
 
 
 def load_itinerary_places(ids):
@@ -24,7 +25,8 @@ def load_itinerary_places(ids):
                           to_jsonb(p)->>'visit_duration',
                           to_jsonb(p)->'tags',
                           to_jsonb(p)->>'indoor',
-                          to_jsonb(p)->>'description'
+                          to_jsonb(p)->>'description',
+                          to_jsonb(p)->'routing_access'
                    FROM places p WHERE p.id = ANY(%s)""",
                 (ids,),
             )
@@ -40,6 +42,7 @@ def load_itinerary_places(ids):
         tags = row[5] if len(row) > 5 else None
         indoor = row[6] if len(row) > 6 else None
         description = row[7] if len(row) > 7 else None
+        routing_access = row[8] if len(row) > 8 else None
         visit = None
         if minutes is not None:
             try:
@@ -57,6 +60,7 @@ def load_itinerary_places(ids):
             True if indoor == "true" else False if indoor == "false" else None,
             "description": description.strip()[:600]
             if isinstance(description, str) else "",
+            "routing_access": routing_access if isinstance(routing_access, dict) else None,
         }
     if any(ident not in places for ident in ids):
         raise LookupError("部分景点ID不存在，无法计算多站路线")
@@ -189,6 +193,14 @@ def build_itinerary_response(places, order, baseline_seconds, optimized_seconds,
             for p in arranged
         ],
         "original_order_ids": [p["id"] for p in places],
+        "routing_points": [
+            routing_provenance(p) if p.get("routing_point") else {
+                "id": p["id"], "name": p["name"],
+                "kind": "poi_coordinate_fallback", "mode": mode,
+                "lon": p["lon"], "lat": p["lat"],
+            }
+            for p in arranged
+        ],
         "optimized_order_ids": [p["id"] for p in arranged],
         "estimated_original_travel_minutes": round(baseline_seconds / 60, 1),
         "estimated_optimized_travel_minutes": round(optimized_seconds / 60, 1),
@@ -206,12 +218,13 @@ def build_itinerary_response(places, order, baseline_seconds, optimized_seconds,
             "未加入景点开放时间、休息、拥堵、泊车、公共交通班次及接驳时间",
             "若景点游览时长缺失，则不计算完整行程总用时",
             "公共Valhalla服务仅适用于小规模验证，非实时导航",
+            "无来源审核的景区入口仍使用原POI坐标，Valhalla可能吸附至不理想路段；入口不保证实时开放",
         ],
     }
 
 
 def plan_itinerary(place_ids, mode):
-    places = load_itinerary_places(place_ids)
+    places = [apply_routing_access(p, mode) for p in load_itinerary_places(place_ids)]
     matrix_response = request_matrix(places, mode)
     times, _distances = validate_matrix(matrix_response, len(places))
     order, initial_time, optimized_time = optimize_open_path(times)
