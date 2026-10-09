@@ -78,6 +78,13 @@ const confirm = async () => {
       { timeout: 120000 },
     )
     const result = response.data
+    // A manual map edit during the async route call must not be overwritten.
+    if (!matchesBase.value || props.disabled) {
+      preview.value = null
+      error.value = '计算过程中当前行程已改变，已丢弃过期结果；原地图保持不变'
+      messages.value.push({ role: 'assistant', text: error.value })
+      return
+    }
     // The existing App.vue handler only redraws after a successful response.
     preview.value = null
     messages.value.push({ role: 'assistant',
