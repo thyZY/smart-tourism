@@ -2,8 +2,10 @@
 """Audit (NOT approve) Xuanwu Lake entrance candidates against live OSM.
 
 Usage:
-  python scripts/audit_xuanwu_osm.py --online
-  python scripts/audit_xuanwu_osm.py --osm-json-dir path/to/overpass_snapshots
+  python scripts/audit_xuanwu_osm.py --osm-api  # use native OSM map JSON; bypass Overpass
+  python scripts/audit_xuanwu_osm.py --osm-api-urls-only # browser links
+  python scripts/audit_xuanwu_osm.py --online   # legacy Overpass query
+  python scripts/audit_xuanwu_osm.py --osm-json-dir path/to/snapshots
 
 No API key, no PostGIS writes, no reviewed status. Generated audit files are
 local-only and must be manually inspected against actual public walkways.
@@ -17,7 +19,6 @@ from pathlib import Path
 import sys
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
