@@ -535,3 +535,58 @@ Valhalla 路网及优化算法。
 布局回归检查见 `tests/ui-layout.mjs`，
 地图联动回归检查见 `tests/frontend-workflow.mjs`。
 仍应在真实浏览器验证左右面板能正常滚动、选项卡可切换及4站行程全部可读。
+
+
+## 第十阶段：可解释的多因素 AI 景点推荐（Draft）
+
+本阶段在现有 `POST /api/ai/itinerary` 中替换了**仅按地图中心近距排序**
+的景点候选选择器，API 请求格式、Valhalla 道路时间矩阵、已有两站/多站
+手动路线、DeepSeek Key 与左右 UI 工作区均保持不变。
+
+新的 `backend/app/ai/recommendation.py` 在查询出的真实 PostGIS POI（最多100条）
+中，综合以下**可核实或可明确标注的启发式指标**逐站选择3—6个景点：
+- **兴趣匹配**：经过白名单校验的旅游类别；使用原有 DeepSeek 意图识别，
+  Key 缺失时仍可按规则理解类别；
+- **有来源的语义匹配**：只有 `places.tags` 中确实存在、且与用户关键词对应的
+  标签才加分。不存在的标签、缺失的室内外属性、营业时间、评分等绝不补造；
+- **类别多样性**：鼓励选择不同类别，减少附近同质景点重复；
+- **空间紧凑性**：地图中心和已选景点的球面直线距离作为候选期近似值，
+  **不能把它当作步行、骑行或驾车距离**；
+- **停留时间和数据完整性**：有 `visit_duration` 时进行预算初筛，
+  换站30分钟只是候选过滤用的粗预留，不作为真实道路耗时；
+  最终时间仍由 Valhalla 实际道路折线与数据库已知停留时长计算。
+
+候选入选是**确定性的贪心启发式**（`explainable_greedy_v1`），并不宣称在全部
+南京景点组合上实现全局最优。首站是评分最高的候选景点，而 Valhalla 只负责
+在这几个已选真实站点之间优化最短道路交通时间。公共 Valhalla 服务的覆盖
+与稳定性限制仍然存在。
+
+**返回结果增强：** 每个被选中 POI 的 `properties.recommendation` 包含相对分数、
+类别匹配、数据库标签命中、距离近似、室内外证据及推荐理由；
+`timeline[].reason` 展示同一依据。
+`recommendation_summary` 则说明推荐了多少类景点、多少景点的实际资料标签
+和需求词命中。前端 AI 行程面板支持查看“为什么推荐这些景点”与评分依据。
+分数仅是可解释的规则评分，**不是景点星级、客观质量或模型置信度**。
+
+### 推荐质量回归与测试
+
+```powershell
+cd D:\smart-tourism
+git fetch origin
+git switch feat/poi-tourism-metadata-20261008
+git pull --ff-only
+
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_recommendation_quality.py"
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"
+node tests/frontend-workflow.mjs
+node tests/ui-layout.mjs
+
+cd frontend
+npm run build
+```
+
+可用同样需求比较旧版与新版（例如「南京一天历史文化游，喜欢博物馆和古迹，
+不想走太多路」）；重点查看新路线是否包含不同类别、每站推荐理由是否有
+数据库可追溯依据，以及是否仍符合时间预算。该阶段没有引入外部景点
+人气/权威评分数据；真实用户满意度或 A/B 测试尚未进行，
+因此不能声称推荐效果已在实际游客中获得提升。
