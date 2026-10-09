@@ -164,7 +164,8 @@ async def personalized_itinerary(request: PersonalizedItineraryRequest):
     try:
         # Early validation before entering the public routing service.
         selected = await asyncio.to_thread(
-            choose_candidates, features, origin, request.max_stops, request.budget_hours * 60
+            choose_candidates, features, origin, request.max_stops, request.budget_hours * 60,
+            intent, query
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
