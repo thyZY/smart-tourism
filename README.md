@@ -321,3 +321,40 @@ foreach ($mode in @("pedestrian", "bicycle", "auto")) {
 
 GitHub Actions 工作流 `.github/workflows/ci.yml` 在推送分支时执行 Python
 离线测试、前端工作流和 Vite 构建。真正的公网寻路结果仍需 Windows 本地验证。
+
+
+## 第七阶段：地图界面布局优化（Draft）
+
+原版页面采用多个独立 absolute 浮窗，导致推荐主题、统计、交通路线和景点详情
+在同一区域互相遮挡。本轮仅调整 Vue 结构、样式与默认折叠状态，**不改变
+PostGIS 查询、DeepSeek 检索、Valhalla 路线或已收录 POI 业务逻辑**。
+
+- **顶部工具栏**：景点搜索、附近、收藏、当前区域、地图显示模式；景点类别单行横向滚动，不再覆盖侧边栏。
+- **左侧发现区**：滚动景点列表，底部顺序预览与 AI 辅助检索；地图缩放仍可使用。
+- **右侧规划区**：路线比较占主要区域；推荐主题与统计默认折叠，展开时在栏内收缩或滚动，不压住路线。
+- **景点详情**：宽屏位于右侧规划栏左方；窄屏改为可关闭的居中覆盖层。
+- **窄屏布局（≤760px）**：左侧发现与下方路线规划分区独立滚动，防止挤压。
+- 清理 Vite 默认的 1126px `#app` 宽度样式，设置 `zh-CN` 页面语言和应用标题。
+
+### 验收
+
+```powershell
+cd D:\smart-tourism
+git fetch origin
+git switch feat/poi-tourism-metadata-20261008
+git pull --ff-only
+node tests/frontend-workflow.mjs
+node tests/ui-layout.mjs
+cd frontend
+npm run build
+```
+
+运行前后端并打开 `http://localhost:5173`。
+在默认页面确认右侧路线面板不再被“推荐主题”遮挡。
+按顺序：选择南京博物院与夫子庙 → 切换并计算三种道路交通方式 →
+展开/收起推荐主题和统计 → 打开/关闭景点详情 → 浏览搜索列表 →
+调整浏览器宽度到约 900px 与 600px。验证路线数值和地图颜色不受布局影响；
+窄屏区块应可滚动和关闭，不应出现完全不可点击的按钮。
+
+注意：CI 里的 `tests/ui-layout.mjs` 是源码布局契约检测，不能替代真实浏览器视觉验收。
+本轮仅完成静态前端布局优化，不包含拖拽面板或地图移动端手势新功能。
