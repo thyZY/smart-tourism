@@ -1,4 +1,5 @@
 """Trust-boundary between an external language model and grounded POI queries."""
+import re
 from ..natural_language import parse_intent
 from .deepseek_client import DeepSeekClient
 
@@ -57,7 +58,11 @@ def normalize_model_intent(raw, query):
     nearby = local["nearby"] or (near if isinstance(near, bool) else False)
     radius = raw.get("radius_km")
     radius_m = local["radius_m"]
-    if radius_m is None and type(radius) in (int, float) and 0.1 <= radius <= 30:
+    # Explicit distance in the user's own text always wins over the model.
+    # When the user only says "nearby", a valid model radius can refine the
+    # rule parser's default 5 km radius.
+    user_provided_distance = re.search(r"(\\d+(?:\\.\\d+)?)\\s*(?:公里|千米|km)", query, re.I)
+    if user_provided_distance is None and type(radius) in (int, float) and 0.1 <= radius <= 30:
         radius_m = round(radius * 1000)
     if nearby and radius_m is None:
         radius_m = 5000
