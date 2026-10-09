@@ -31,53 +31,14 @@ def resolve_travel_mode(query, intent, override=None):
     return "pedestrian"
 
 
-def choose_candidates(features, origin, max_stops, budget_minutes):
-    """Closest eligible POIs, with known dwell times checked before selection.
-
-    Road-time optimization happens later on the selected subset, not at this
-    candidate-selection stage. Unknown visit time is never guessed.
-    """
-    if len(features) < 3:
-        raise ValueError("匹配的真实景点不足3个，请放宽筛选类别或搜索范围")
-    valid = []
-    seen = set()
-    for feature in features:
-        props = feature.get("properties") or {}
-        xy = (feature.get("geometry") or {}).get("coordinates")
-        ident = props.get("id")
-        if (type(ident) is not int or ident <= 0 or ident in seen or
-                not isinstance(xy, list) or len(xy) != 2 or
-                any(type(n) not in (float, int) for n in xy)):
-            continue
-        seen.add(ident)
-        valid.append(feature)
-    if len(valid) < 3:
-        raise ValueError("可用于道路规划的有效景点不足3个")
-    valid.sort(key=lambda f: (
-        great_circle_km(origin, tuple(f["geometry"]["coordinates"])),
-        f["properties"]["id"],
-    ))
-    # Limit database metadata reads and candidate-selection radius. No matrix
-    # requests for a large unbounded set of 40+ POIs.
-    shortlist = valid[:min(18, len(valid))]
-    places = load_itinerary_places([f["properties"]["id"] for f in shortlist])
-    metadata = {p["id"]: p for p in places}
-    selected = []
-    known_minutes = 0
-    for feature in shortlist:
-        if len(selected) >= max_stops:
-            break
-        visit = metadata[feature["properties"]["id"]]["visit_duration"]
-        # 30 minutes/transfer is a conservative SELECTION reserve, not a
-        # claimed roadway duration. Final fit uses measured road legs.
-        proposed = known_minutes + (visit or 0)
-        if visit is not None and proposed + (len(selected) * 30) > budget_minutes:
-            continue
-        selected.append(feature)
-        known_minutes = proposed
-    if len(selected) < 3:
-        raise ValueError("当前时间预算无法容纳至少3个具备已知停留时长的景点，请增加可用小时数")
-    return selected
+def choose_candidates(features, origin, max_stops, budget_minutes,
+                      intent=None, query=""):
+    """Explainable POI subset selection before actual Valhalla road routing."""
+    from .recommendation import select_ranked_places
+    return select_ranked_places(
+        features, origin, max_stops, budget_minutes,
+        intent or {}, query, load_itinerary_places,
+    )
 
 
 def _clock(minutes):
@@ -105,8 +66,10 @@ def build_timeline(itinerary, selected, budget_minutes, start_time):
             "id": stop["id"],
             "name": stop["name"],
             "category": category,
-            "reason": (f"与你的{category}兴趣条件匹配，且已收录于本地景点数据库"
-                       if category else "已收录于本地景点数据库，按地理邻近性入选"),
+            "reason": (feature["properties"].get("recommendation") or {}).get("reason")
+                      or (f"已录入类别「{category}」" if category else "已收录于本地景点数据库"),
+            "recommendation_score": (feature["properties"].get("recommendation") or {}).get("score"),
+            "matched_tags": (feature["properties"].get("recommendation") or {}).get("matched_tags", []),
             "arrival_time": arrival,
             "departure_time": _clock(finish),
             "visit_duration": dwell,
@@ -121,7 +84,7 @@ def build_timeline(itinerary, selected, budget_minutes, start_time):
 def build_personalized_itinerary(features, origin, intent, mode, max_stops,
                                   budget_hours, start_time, selected=None):
     if selected is None:
-        selected = choose_candidates(features, origin, max_stops, round(budget_hours * 60))
+        selected = choose_candidates(features, origin, max_stops, round(budget_hours * 60), intent)
     chosen_ids = [f["properties"]["id"] for f in selected]
     route = plan_itinerary(chosen_ids, mode)
     if (route["optimized_order_ids"][0] != chosen_ids[0] or
@@ -131,7 +94,7 @@ def build_personalized_itinerary(features, origin, intent, mode, max_stops,
         raise ValueError("道路服务返回了不一致的景点行程")
     timeline, fits = build_timeline(route, selected, budget_hours * 60, start_time)
     limitations = [
-        "候选景点按地图中心附近和已录入的停留时长初筛；道路时间矩阵仅优化已选景点顺序",
+        "候选景点由兴趣类别、已有资料标签、多样性和地理距离启发式筛选；Valhalla仅优化所选景点顺序，并非南京全域最优景点组合",
         "建议到达时间是假设指定时间可入园的预排，不代表真实营业时间或预约情况",
         "不含排队、休息、餐饮、停车、上下车及实时交通变化",
         "当前仅支持单日、单一交通方式、固定首站3—6景点",
@@ -152,6 +115,14 @@ def build_personalized_itinerary(features, origin, intent, mode, max_stops,
         "start_time": start_time,
         "within_time_budget": fits,
         "selected_places": {"type": "FeatureCollection", "features": selected},
+        "recommendation_method": "explainable_greedy_v1",
+        "recommendation_criteria": [
+            "兴趣类别及现有PostGIS类别匹配",
+            "仅使用数据库实际存在且与需求词匹配的旅游标签",
+            "鼓励不同类别，降低同类景点重复推荐",
+            "地图中心和景点间直线距离仅作候选阶段距离近似",
+            "依据已知停留时长和每站30分钟粗略预留初筛；实际道路时间由Valhalla重新计算",
+        ],
         "itinerary": route,
         "timeline": timeline,
         "limitations": limitations,
