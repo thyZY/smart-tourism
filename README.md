@@ -995,3 +995,56 @@ git pull --ff-only
 下一步可将本机生成的JSON或QGIS截图发回；再根据实际OSM闸门节点、
 交通方式和景区官方资料，逐个确定可认证的入口，生成有回滚说明的SQL，
 并实测入口使用前后的 Valhalla 路程。
+
+
+## 第十四阶段·Overpass超时处理：原生OpenStreetMap JSON地图接口
+
+2026-10-10 本地环境反馈：默认Overpass返回 HTTP 504、备用服务器返回500，
+Overpass Turbo浏览器页面也报告 OSM3s Dispatcher 读取和索引等待超时。
+这是服务器不能及时处理查询，不能据此判断南京景区没有入口数据。
+为避免在繁忙公共Overpass实例反复提交同一查询，新增
+**不依赖 Overpass QL 的原生 OpenStreetMap API 只读小范围下载模式**。
+
+### 推荐首先运行此命令
+
+```powershell
+cd D:\smart-tourism
+git pull --ff-only
+.\.venv\Scripts\python.exe scripts\audit_xuanwu_osm.py --osm-api
+```
+
+`--osm-api` 对玄武门和解放门分别发起一次
+`GET https://api.openstreetmap.org/api/0.6/map.json?bbox=左,下,右,上`，
+每个范围默认约为360m×360m（覆盖此前180米半径）。
+OSM官方API提供JSON原生导出：只要求bbox而不执行Overpass数据库筛选。
+数据包含附近OSM节点/道路及其标签，随后由**同一套本地分析代码**
+识别 `entrance/barrier`、步道节点与 `foot/access` 标签。
+这只适用于此次小规模人工核查；OSM编辑API不适合大面积
+高频抓取，且可能仍存在服务限制。
+
+若成功，将输出以下**未审核的本机结果**：
+
+```text
+data\entrance_evidence\xuanwu_lake_osm_audit_local.json
+data\entrance_evidence\xuanwu_lake_osm_audit_local.geojson
+```
+
+如果连OSM原生接口也不能在PowerShell访问，执行：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\audit_xuanwu_osm.py --osm-api-urls-only
+```
+
+命令会打印两条预填bbox的官方OSM JSON下载地址；
+在Chrome中分别打开、将原始JSON保存为
+`xuanwumen_west.json` 和 `jiefangmen_south.json`，
+统一放到 `D:\osm-gate-snapshots` 目录后执行：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\audit_xuanwu_osm.py --osm-json-dir D:\osm-gate-snapshots
+```
+
+仍然失败时不要伪造OSM数据；可以将具体错误文本/浏览器截图发回继续排查。
+**不需要重启WebGIS、重新运行数据库迁移或执行draft SQL。**
+任何研究结果都不会自动写入 `reviewed`，OSM步道关联也不能代表
+实际开放状态。对任一候选正式启用入口前仍需人工复核来源和现场通行。
