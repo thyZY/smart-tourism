@@ -20,7 +20,7 @@ router = APIRouter(prefix="/api/routing", tags=["road-routing"])
 class RoadRouteRequest(BaseModel):
     from_id: int = Field(ge=1)
     to_id: int = Field(ge=1)
-    mode: Literal["pedestrian"] = "pedestrian"
+    mode: Literal["pedestrian", "bicycle", "auto"] = "pedestrian"
 
 
 def _decode_number(polyline, index):
@@ -74,14 +74,16 @@ def load_places(from_id, to_id):
     return {row[0]: {"id": row[0], "name": row[1], "lon": row[2], "lat": row[3]} for row in rows}
 
 
-def request_valhalla(first, second, *, opener=urlopen):
+def request_valhalla(first, second, mode="pedestrian", *, opener=urlopen):
+    if mode not in ("pedestrian", "bicycle", "auto"):
+        raise ValueError("Unsupported routing mode")
     url = os.getenv("VALHALLA_ROUTE_URL", "https://valhalla1.openstreetmap.de/route")
     body = json.dumps({
         "locations": [
             {"lat": first["lat"], "lon": first["lon"]},
             {"lat": second["lat"], "lon": second["lon"]},
         ],
-        "costing": "pedestrian",
+        "costing": mode,
         "units": "kilometers",
         "directions_type": "none",
     }).encode("utf-8")
@@ -93,7 +95,7 @@ def request_valhalla(first, second, *, opener=urlopen):
         return json.load(response)
 
 
-def build_road_feature(first, second, response):
+def build_road_feature(first, second, response, mode="pedestrian"):
     trip = response.get("trip")
     if not isinstance(trip, dict):
         raise ValueError("Provider returned no trip")
@@ -115,11 +117,11 @@ def build_road_feature(first, second, response):
         "properties": {
             "from_id": first["id"], "to_id": second["id"],
             "from_name": first["name"], "to_name": second["name"],
-            "mode": "pedestrian",
+            "mode": mode,
             "distance_km": round(float(length), 3),
             "duration_minutes": round(float(time) / 60, 1),
             "provider": "valhalla_osm",
-            "limitations": "步行距离与时间为OSM路网估算，非实时导航；起终点可能吸附至道路。",
+            "limitations": "距离和时间为OSM路网估算，不含实时交通与交通工具等待时间；起终点可能吸附至道路。",
         },
         "geometry": {"type": "LineString", "coordinates": coordinates},
     }
@@ -134,8 +136,8 @@ def route_between_places(body: RoadRouteRequest):
         raise HTTPException(status_code=404, detail="数据库中找不到对应景点")
     first, second = places[body.from_id], places[body.to_id]
     try:
-        response = request_valhalla(first, second)
-        return build_road_feature(first, second, response)
+        response = request_valhalla(first, second, mode=body.mode)
+        return build_road_feature(first, second, response, mode=body.mode)
     except (HTTPError, URLError, OSError, TimeoutError) as exc:
         raise HTTPException(status_code=502, detail="道路寻路服务暂不可用，请稍后重试；现有直线预览仍可使用") from exc
     except (ValueError, KeyError, TypeError) as exc:
