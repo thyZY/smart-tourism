@@ -270,3 +270,54 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8010/api/routing/route" -Method Post -C
 但真实公网端点、Windows 前端构建仍需本机执行和验收。
 此路线提供的是基于 OSM 的**非实时步行估算**，尚无入口点校正、
 道路无障碍/坡度筛选、多站道路距离矩阵，也不能视为实时导航。
+
+
+## 第六阶段：步行 / 骑行 / 驾车路网对比（Draft）
+
+`POST /api/routing/route` 扩展至三种 Valhalla `costing` 模式：
+
+| mode | 用户界面 | 地图道路折线 |
+| --- | --- | --- |
+| `pedestrian` | 🚶 步行 | 绿色 |
+| `bicycle` | 🚲 骑行 | 橙色 |
+| `auto` | 🚗 驾车 | 蓝色 |
+
+不传 `mode` 仍按步行处理，保持已有 API 兼容。其他模式会得到 HTTP 422，
+目前**不支持实时公交、地铁、出租车计价或实时路况**。引擎的距离和预计用时
+为 OSM 路网模型估算；驾车不保证最新交通限制，骑行不保证每条道路可骑，
+请勿将其当作现实导航或安全保证。公共 Valhalla 演示服务可能限流或无法覆盖某些道路。
+
+操作：在「我的路线」中恰好选择两个景点，切换步行/骑行/驾车，
+逐个点击「计算当前交通方式路线」。地图只显示当前选择模式的对应路线，
+下方表格保留该次两景点组合已经算过的各模式距离与时间，
+尚未计算显示「待计算」，**不会编造数值**。切回已计算方式直接使用前端缓存；
+若增删景点则自动清除全部结果。道路失败时恢复虚线直线预览。
+
+### Windows PowerShell 本地验收
+
+```powershell
+cd D:\smart-tourism
+git fetch origin
+git switch feat/poi-tourism-metadata-20261008
+git pull --ff-only
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"
+node tests/frontend-workflow.mjs
+cd frontend
+npm run build
+```
+
+前后端重启后可用真实数据库的 POI ID 请求 `/api/routing/route`：
+
+```powershell
+$pois = (Invoke-RestMethod "http://127.0.0.1:8010/api/places").features
+$a = $pois | Where-Object { $_.properties.name -eq "南京博物院" } | Select-Object -First 1
+$b = $pois | Where-Object { $_.properties.name -eq "夫子庙" } | Select-Object -First 1
+foreach ($mode in @("pedestrian", "bicycle", "auto")) {
+  $body = @{from_id=$a.properties.id;to_id=$b.properties.id;mode=$mode} | ConvertTo-Json
+  $result = Invoke-RestMethod -Uri "http://127.0.0.1:8010/api/routing/route" -Method Post -ContentType "application/json" -Body $body
+  "$mode : $($result.properties.distance_km) km, $($result.properties.duration_minutes) minutes"
+}
+```
+
+GitHub Actions 工作流 `.github/workflows/ci.yml` 在推送分支时执行 Python
+离线测试、前端工作流和 Vite 构建。真正的公网寻路结果仍需 Windows 本地验证。
