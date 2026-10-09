@@ -54,7 +54,7 @@ const context = vm.createContext({
     post: (url, data, options) => new Promise((resolve, reject) => requests.push({ url, data, options, resolve, reject }))
   }
 })
-vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, selectTheme, selectedTheme, applyAiPlan, focusResult, closePlaceDetail, toggleRoutePlace, clearRoute, toggleFavorite, showFavoritePlaces, isFavorite, favoritePlaceIds, showFavoritesOnly, selectedRoutePlaces, routeDistanceKm, calculateRoadRoute, calculateMultiRoute, selectRoadMode, roadMode, roadResults, roadRoute, roadRoutePending, roadRouteError, multiRoute, multiPending, multiResults, multiError, selectedPlace, selectedPlaceId, tourismCard, tourismLoading, tourismError, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
+vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, selectTheme, selectedTheme, applyAiPlan, focusResult, closePlaceDetail, toggleRoutePlace, clearRoute, toggleFavorite, showFavoritePlaces, isFavorite, favoritePlaceIds, showFavoritesOnly, selectedRoutePlaces, leftView, routeDistanceKm, calculateRoadRoute, calculateMultiRoute, selectRoadMode, roadMode, roadResults, roadRoute, roadRoutePending, roadRouteError, multiRoute, multiPending, multiResults, multiError, selectedPlace, selectedPlaceId, tourismCard, tourismLoading, tourismError, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
 const api = context.api
 const empty = { type: 'FeatureCollection', features: [] }
 const tick = () => new Promise(resolve => setImmediate(resolve))
@@ -364,6 +364,7 @@ assert.equal(api.multiRoute.value, null, 'editing stops invalidates multi itiner
 assert.equal(Object.keys(api.multiResults.value).length, 0, 'multi cache invalidated on stop change')
 assert.equal(map.sources['road-route'].data.features.length, 0)
 assert.equal(api.selectedRoutePlaces.value.length, 2)
+assert.equal(api.leftView.value, 'places', 'normal searches begin on the scenic list tab')
 
 const autoRouteGeometry = { type: 'FeatureCollection', features: [
   { type: 'Feature', properties: { sequence: 1 }, geometry: {
@@ -384,6 +385,7 @@ const aiRecommendations = {
   }
 }
 api.applyAiPlan(aiRecommendations)
+assert.equal(api.leftView.value, 'ai', 'generated AI plan switches to dedicated day-plan pane')
 assert.deepEqual(
   JSON.parse(JSON.stringify(api.selectedRoutePlaces.value.map(feature => feature.properties.id))),
   [1, 3, 2],
