@@ -51,7 +51,7 @@ const context = vm.createContext({
     post: (url, data, options) => new Promise((resolve, reject) => requests.push({ url, data, options, resolve, reject }))
   }
 })
-vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, selectTheme, selectedTheme, focusResult, closePlaceDetail, toggleRoutePlace, clearRoute, toggleFavorite, showFavoritePlaces, isFavorite, favoritePlaceIds, showFavoritesOnly, selectedRoutePlaces, routeDistanceKm, calculateRoadRoute, calculateMultiRoute, selectRoadMode, roadMode, roadResults, roadRoute, roadRoutePending, roadRouteError, multiRoute, multiPending, multiResults, multiError, selectedPlace, selectedPlaceId, tourismCard, tourismLoading, tourismError, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
+vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, selectTheme, selectedTheme, applyAiPlan, focusResult, closePlaceDetail, toggleRoutePlace, clearRoute, toggleFavorite, showFavoritePlaces, isFavorite, favoritePlaceIds, showFavoritesOnly, selectedRoutePlaces, routeDistanceKm, calculateRoadRoute, calculateMultiRoute, selectRoadMode, roadMode, roadResults, roadRoute, roadRoutePending, roadRouteError, multiRoute, multiPending, multiResults, multiError, selectedPlace, selectedPlaceId, tourismCard, tourismLoading, tourismError, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
 const api = context.api
 const empty = { type: 'FeatureCollection', features: [] }
 const tick = () => new Promise(resolve => setImmediate(resolve))
@@ -360,6 +360,44 @@ api.toggleRoutePlace(historicalSite)
 assert.equal(api.multiRoute.value, null, 'editing stops invalidates multi itinerary')
 assert.equal(Object.keys(api.multiResults.value).length, 0, 'multi cache invalidated on stop change')
 assert.equal(map.sources['road-route'].data.features.length, 0)
+assert.equal(api.selectedRoutePlaces.value.length, 2)
+
+const autoRouteGeometry = { type: 'FeatureCollection', features: [
+  { type: 'Feature', properties: { sequence: 1 }, geometry: {
+    type: 'LineString', coordinates: [[118.7921, 32.0407], [118.7800, 32.0200]]
+  } },
+  { type: 'Feature', properties: { sequence: 2 }, geometry: {
+    type: 'LineString', coordinates: [[118.7800, 32.0200], [118.7877, 32.0270]]
+  } }
+] }
+const aiRecommendations = {
+  selected_places: { type: 'FeatureCollection', features: [museum, confuciusTemple, historicalSite] },
+  itinerary: {
+    mode: 'auto',
+    optimized_order_ids: [1, 3, 2],
+    geometry: autoRouteGeometry,
+    distance_km: 3.12,
+    duration_minutes: 8.4
+  }
+}
+api.applyAiPlan(aiRecommendations)
+assert.deepEqual(
+  JSON.parse(JSON.stringify(api.selectedRoutePlaces.value.map(feature => feature.properties.id))),
+  [1, 3, 2],
+  'AI itinerary uses exact optimized POI order, not LLM-invented names'
+)
+assert.equal(api.roadMode.value, 'auto', 'AI-selected travel mode is applied to existing route panel')
+assert.equal(api.multiRoute.value.distance_km, 3.12)
+assert.equal(api.multiResults.value.auto.duration_minutes, 8.4)
+assert.equal(map.sources['road-route'].data.features.length, 2, 'AI planner paints verified road legs')
+assert.equal(map.paintProperties.at(-1).value, '#2563eb', 'AI-generated driving road is blue')
+assert.equal(map.layoutProperties.at(-1).value, 'none', 'AI itinerary hides direct line')
+const beforeInvalidPlan = api.multiRoute.value
+api.applyAiPlan({ selected_places: aiRecommendations.selected_places,
+  itinerary: { ...aiRecommendations.itinerary, optimized_order_ids: [1, 666, 2] } })
+assert.equal(api.multiRoute.value, beforeInvalidPlan, 'untrusted POI ids cannot overwrite current route')
+api.toggleRoutePlace(historicalSite)
+assert.equal(api.multiRoute.value, null, 'manual route edit invalidates old AI road geometry')
 assert.equal(api.selectedRoutePlaces.value.length, 2)
 
 api.toggleRoutePlace(museum)
