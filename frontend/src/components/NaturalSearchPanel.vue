@@ -8,7 +8,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['results', 'route'])
 const query = ref('')
-const message = ref('未配置 DeepSeek Key 时自动使用规则检索，地图结果始终来自 PostGIS。')
+const message = ref('支持 DeepSeek 解析；不可用时会自动使用规则检索。')
 const pending = ref(false)
 const result = ref(null)
 
@@ -65,15 +65,44 @@ const showPreview = () => {
 </template>
 
 <style scoped>
-.natural-search {position:absolute;left:20px;bottom:24px;z-index:10;width:min(360px,calc(100vw - 40px));max-height:42vh;overflow-y:auto;box-sizing:border-box;padding:12px 14px;border:1px solid #ddd;border-radius:10px;background:#fff;color:#222;box-shadow:0 3px 12px #0002}
-h2 {margin:0;font-size:16px}
-h2 small {font-size:11px;font-weight:normal;color:#64748b}
-p {margin:7px 0;font-size:12px;color:#475569;line-height:1.5}
-form {display:flex;gap:6px}
-input {width:100%;min-width:0;padding:9px;border:1px solid #cbd5e1;border-radius:6px}
-button {padding:7px 10px;white-space:nowrap;border:0;border-radius:6px;background:#2563eb;color:white;cursor:pointer}
-button:disabled {opacity:.55;cursor:not-allowed}
-.natural-message {margin-bottom:0}
-.preview-notice {color:#9a3412}
-.route-button {margin-top:6px;background:#0f766e}
+.natural-search {
+  position: relative;
+  width: 100%;
+  max-height: min(34vh, 245px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 13px;
+  border: 1px solid #dbe4ee;
+  border-radius: 12px;
+  background: white;
+  color: #26374b;
+  box-shadow: 0 4px 16px #12253e26;
+  text-align: left;
+}
+h2 { margin: 0; font-size: 15px; color: #1c3047; }
+h2 small { font-size: 11px; font-weight: 400; color: #738399; }
+p { margin: 6px 0; font-size: 12px; color: #687a8d; line-height: 1.4; }
+form { display: flex; gap: 6px; }
+input {
+  width: 100%;
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid #d2ddea;
+  border-radius: 8px;
+  color: #1f2937;
+  background: #fff;
+}
+button {
+  padding: 8px 10px;
+  white-space: nowrap;
+  border: 0;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #fff;
+  cursor: pointer;
+}
+button:disabled { opacity: .55; cursor: not-allowed; }
+.natural-message { max-height: 52px; overflow-y: auto; font-size: 11px; }
+.preview-notice { color: #9a3412; }
+.route-button { margin-top: 6px; background: #0f766e; }
 </style>
