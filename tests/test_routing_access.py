@@ -79,7 +79,7 @@ class ReviewedAccessTests(unittest.TestCase):
             "summary": {"length": 1.5, "time": 600},
             "legs": [{"shape": SHAPE}],
         }}
-        with patch("backend.app.routing_routes.load_places", return_value=sites), \\
+        with patch("backend.app.routing_routes.load_places", return_value=sites), \
              patch("backend.app.routing_routes.request_valhalla", return_value=response) as provider:
             result = route_between_places(RoadRouteRequest(from_id=1, to_id=2))
         start, finish = provider.call_args.args
@@ -99,8 +99,8 @@ class ReviewedAccessTests(unittest.TestCase):
              "routing_access": {"pedestrian": {**PED_POINT,
                  "name": "示例公园入口", "lng": 118.811, "lat": 32.051}}},
         ]
-        with patch("backend.app.road_itinerary.load_itinerary_places", return_value=stops), \\
-             patch("backend.app.road_itinerary.request_matrix", return_value=MATRIX) as matrix, \\
+        with patch("backend.app.road_itinerary.load_itinerary_places", return_value=stops), \
+             patch("backend.app.road_itinerary.request_matrix", return_value=MATRIX) as matrix, \
              patch("backend.app.road_itinerary.request_multileg_route", return_value=ROUTE) as route:
             result = plan_itinerary([1, 2, 3], "pedestrian")
         matrix_points = matrix.call_args.args[0]
