@@ -17,6 +17,7 @@ const mapContainer = ref(null)
 const searchQuery = ref('')
 const searchMessage = ref('')
 const searchResults = ref([])
+const leftView = ref('places') // 'places' | 'ai'; each rail keeps its own scroll position
 const naturalSearchCenter = ref({ lng: 118.7969, lat: 32.0603 })
 const selectedPlaceId = ref(null)
 const selectedPlace = ref(null)
@@ -120,6 +121,7 @@ const toggleFavorite = (feature) => {
 
 const showFavoritePlaces = async () => {
   if (!mapReady.value || loading.value) return
+  leftView.value = 'places'
 
   exitThemeMode()
   showFavoritesOnly.value = true
@@ -375,6 +377,7 @@ const exitThemeMode = () => {
 }
 
 const selectTheme = (theme) => {
+  leftView.value = 'places'
   if (!mapReady.value || loading.value || !theme) return
 
   if (!selectedTheme.value) themeBaseFeatures = searchResults.value
@@ -550,6 +553,7 @@ const applyItineraryPreview = (stops) => {
 
 const applyNaturalResults = (collection) => {
   if (!map || !mapReady.value || loading.value) return
+  leftView.value = 'places'
   exitThemeMode()
   showFavoritesOnly.value = false
   clearPopup()
@@ -576,6 +580,7 @@ const applyAiPlan = (plan) => {
       ids.some(id => !Object.prototype.hasOwnProperty.call(byId, id))) return
 
   exitThemeMode()
+  leftView.value = 'ai'
   showFavoritesOnly.value = false
   clearPopup()
   closePlaceDetail()
@@ -603,6 +608,7 @@ const setMapDisplayMode = (mode) => {
 // All three request paths share one lock; the source exists before any request starts.
 const loadPlaces = async (nearby = false, currentArea = false) => {
   if (!mapReady.value || loading.value) return
+  leftView.value = 'places'
 
   exitThemeMode()
   showFavoritesOnly.value = false
@@ -881,37 +887,53 @@ onUnmounted(() => {
         @click="selectCategory(category)">{{ category }}</button>
     </nav>
 
-    <section class="left-workspace" aria-label="景点发现">
-      <div v-if="searchMessage" class="search-message" role="status">{{ searchMessage }}</div>
-
-      <div v-if="searchResults.length" class="result-list">
-        <div class="result-count">找到 {{ searchResults.length }} 个景点</div>
-        <div v-for="feature in searchResults" :key="feature.properties.id"
-          :data-place-id="feature.properties.id"
-          :class="[
-            'result-item',
-            {
-              'result-item-selected': selectedPlaceId === feature.properties.id,
-              'result-item-route-selected': selectedRoutePlaces.some(
-                (place) => place.properties.id === feature.properties.id
-              )
-            }
-          ]"
-          @click="focusResult(feature)">
-          <button class="favorite-toggle" type="button"
-            :aria-label="isFavorite(feature.properties.id) ? '取消收藏' : '收藏'"
-            :title="isFavorite(feature.properties.id) ? '取消收藏' : '收藏'"
-            @click.stop="toggleFavorite(feature)">
-            {{ isFavorite(feature.properties.id) ? '★' : '☆' }}
-          </button>
-          <strong>{{ feature.properties.name }}</strong>
-          <div class="result-category">{{ feature.properties.category }}</div>
-        </div>
+    <section class="left-workspace" aria-label="景点发现与AI规划">
+      <div class="left-view-tabs" role="tablist" aria-label="切换左侧工作区">
+        <button type="button" role="tab" id="places-tab" aria-controls="places-workspace"
+          :aria-selected="leftView === 'places'" :class="{ active: leftView === 'places' }"
+          @click="leftView = 'places'">
+          景点列表 <span>{{ searchResults.length }}</span>
+        </button>
+        <button type="button" role="tab" id="ai-tab" aria-controls="ai-workspace"
+          :aria-selected="leftView === 'ai'" :class="{ active: leftView === 'ai' }"
+          @click="leftView = 'ai'">
+          AI 行程
+        </button>
       </div>
 
-      <div class="left-tools">
-        <ItineraryPreviewPanel :map-ready="mapReady" :center="naturalSearchCenter"
+      <div v-show="leftView === 'places'" id="places-workspace" class="places-workspace"
+        role="tabpanel" aria-labelledby="places-tab">
+        <div v-if="searchMessage" class="search-message" role="status">{{ searchMessage }}</div>
+        <div v-if="searchResults.length" class="result-list">
+          <div class="result-count">找到 {{ searchResults.length }} 个景点</div>
+          <div v-for="feature in searchResults" :key="feature.properties.id"
+            :data-place-id="feature.properties.id"
+            :class="[
+              'result-item',
+              {
+                'result-item-selected': selectedPlaceId === feature.properties.id,
+                'result-item-route-selected': selectedRoutePlaces.some(
+                  (place) => place.properties.id === feature.properties.id
+                )
+              }
+            ]"
+            @click="focusResult(feature)">
+            <button class="favorite-toggle" type="button"
+              :aria-label="isFavorite(feature.properties.id) ? '取消收藏' : '收藏'"
+              :title="isFavorite(feature.properties.id) ? '取消收藏' : '收藏'"
+              @click.stop="toggleFavorite(feature)">
+              {{ isFavorite(feature.properties.id) ? '★' : '☆' }}
+            </button>
+            <strong>{{ feature.properties.name }}</strong>
+            <div class="result-category">{{ feature.properties.category }}</div>
+          </div>
+        </div>
+        <ItineraryPreviewPanel class="itinerary-tool" :map-ready="mapReady" :center="naturalSearchCenter"
           @route="applyItineraryPreview" />
+      </div>
+
+      <div v-show="leftView === 'ai'" id="ai-workspace" class="ai-workspace"
+        role="tabpanel" aria-labelledby="ai-tab">
         <NaturalSearchPanel :map-ready="mapReady" :center="naturalSearchCenter"
           @results="applyNaturalResults" @route="applyItineraryPreview" @planned="applyAiPlan" />
       </div>
@@ -1093,7 +1115,48 @@ body { overflow: hidden; }
 .left-workspace { left: 16px; pointer-events: none; }
 .right-workspace { right: 16px; }
 .left-workspace > *, .right-workspace > * { pointer-events: auto; min-width: 0; }
-.left-tools { display: flex; flex-direction: column; gap: 10px; flex: 0 0 auto; }
+
+/* Do not stack a full AI timeline underneath the list and preview.
+   Tabs make the height budget explicit; each pane scrolls independently. */
+.left-view-tabs {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid #dbe4ee;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 3px 12px #12253e1b;
+}
+.left-view-tabs button {
+  padding: 9px 7px;
+  border: 0;
+  border-radius: 8px;
+  color: #4c5c70;
+  background: #f5f7fa;
+  font-weight: 600;
+  cursor: pointer;
+}
+.left-view-tabs button.active { background: #2563eb; color: white; }
+.left-view-tabs span { margin-left: 4px; opacity: .85; }
+.places-workspace, .ai-workspace {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 10px;
+  overflow: hidden;
+}
+.places-workspace > .result-list { flex: 1 1 auto; min-height: 0; max-height: none; }
+.places-workspace > .itinerary-tool { flex: 0 1 auto; min-height: 0; }
+.ai-workspace > .natural-search {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  max-height: none;
+  overflow-y: auto;
+}
 .search-message {
   flex: 0 0 auto;
   max-height: 72px;
@@ -1151,7 +1214,7 @@ body { overflow: hidden; }
   font-size: 22px !important;
   cursor: pointer;
 }
-.left-tools { margin-top: auto; }
+/* AI and POI views use separate height-constrained scroll regions. */
 
 .right-workspace > .route-panel {
   flex: 1 1 auto;
@@ -1185,9 +1248,7 @@ body { overflow: hidden; }
     top: var(--workspace-top);
     bottom: calc(43vh + 24px);
     width: var(--rail-width);
-    overflow-y: auto;
-    pointer-events: auto;
-    scrollbar-width: thin;
+    pointer-events: none;
   }
   .right-workspace {
     top: auto;
@@ -1196,11 +1257,11 @@ body { overflow: hidden; }
     height: 42vh;
     width: var(--rail-width);
   }
-  .result-list { max-height: 30vh; }
-  .left-tools { gap: 6px; }
+  .places-workspace > .result-list { max-height: none; }
+  .places-workspace, .ai-workspace { gap: 6px; }
 }
 @media (max-height: 680px) and (min-width: 761px) {
   .left-workspace, .right-workspace { --workspace-top: 110px; }
-  .result-list { max-height: 35vh; }
+  .places-workspace > .result-list { max-height: none; }
 }
 </style>
