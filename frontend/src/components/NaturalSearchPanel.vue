@@ -129,6 +129,15 @@ const showPreview = () => {
         · {{ planResult.itinerary.distance_km.toFixed(2) }}km /
         {{ planResult.itinerary.duration_minutes.toFixed(1) }}分钟交通时间
       </p>
+      <p v-if="planResult.recommendation_summary" class="recommendation-note">
+        候选覆盖 {{ planResult.recommendation_summary.distinct_categories }} 种景点类别；
+        {{ planResult.recommendation_summary.verified_tag_match_pois }} 个景点有数据库标签与需求词匹配。
+        <span>评分是可解释的启发式推荐，不是客观景点评级。</span>
+      </p>
+      <details v-if="planResult.recommendation_criteria?.length" class="recommendation-method">
+        <summary>为什么推荐这些景点？</summary>
+        <ul><li v-for="item in planResult.recommendation_criteria" :key="item">{{ item }}</li></ul>
+      </details>
       <p v-if="planResult.within_time_budget === false" class="plan-alert">该行程预计超过时间预算，请减少景点或延长时间。</p>
       <p v-else-if="planResult.within_time_budget == null" class="plan-alert">停留时长不完整，无法确认是否符合时间预算。</p>
       <details open>
@@ -187,6 +196,8 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .plan-output { padding-top: 8px; border-top: 1px solid #e2e8f0; }
 .plan-output p strong { color: #0f766e; }
 .plan-alert { color: #a34115; font-weight: 600; }
+.recommendation-note { padding: 8px; border-radius: 7px; background: #eef7f6; color: #186055; }
+.recommendation-note span { display: block; font-size: 11px; color: #526a6a; margin-top: 3px; }
 .plan-output details { border-top: 1px solid #eef2f7; }
 .plan-timeline { padding-left: 20px; margin: 5px 0 8px; font-size: 12px; }
 .plan-timeline li { padding: 5px 0; }
