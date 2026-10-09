@@ -168,7 +168,8 @@ def _target_index(op, ids, name_by_id):
     return by_index if by_index is not None else by_name
 
 
-def propose_edit(ops, ids, locked, mode, hours, start_time, current, candidates):
+def propose_edit(ops, ids, locked, mode, hours, start_time, current, candidates,
+                 auto_trim=True):
     """Return a preview of validated ID edits, never touching the map/roads."""
     if not 3 <= len(ids) <= 6 or len(set(ids)) != len(ids):
         raise ValueError("需先生成3—6个不同景点的有效行程")
@@ -265,7 +266,7 @@ def propose_edit(ops, ids, locked, mode, hours, start_time, current, candidates)
             "transport_mode": updated_mode,
             "budget_hours": updated_hours,
             "start_time": updated_start,
-            "auto_trim": True,
+            "auto_trim": auto_trim,
         },
         "changes": changes,
         "selected_names": [available[item]["properties"]["name"] for item in result],
