@@ -6,7 +6,13 @@ const props = defineProps({
   mapReady: { type: Boolean, default: false },
   center: { type: Object, default: null }
 })
-const emit = defineEmits(['route'])
+const emit = defineEmits(['route', 'expanded-change'])
+const expanded = ref(false)
+
+const handleToggle = (event) => {
+  expanded.value = event.currentTarget.open
+  emit('expanded-change', expanded.value)
+}
 const query = ref('')
 const maxStops = ref(4)
 const pending = ref(false)
@@ -34,8 +40,8 @@ const preview = async () => {
 </script>
 
 <template>
-  <aside class="preview-panel" aria-label="景点顺序预览">
-    <details>
+  <aside class="preview-panel" :class="{ 'is-expanded': expanded }" aria-label="景点顺序预览">
+    <details @toggle="handleToggle">
       <summary>景点顺序预览（直线距离）</summary>
       <p>根据地图中心和已收录景点生成候选顺序，不是道路导航。</p>
       <form @submit.prevent="preview">
@@ -65,7 +71,9 @@ const preview = async () => {
 .preview-panel {
   position: relative;
   width: 100%;
-  max-height: min(36vh, 270px);
+  flex: 0 0 auto;
+  min-height: 0;
+  max-height: none;
   overflow-y: auto;
   box-sizing: border-box;
   border: 1px solid #dbe4ee;
@@ -76,6 +84,7 @@ const preview = async () => {
   text-align: left;
 }
 summary { cursor: pointer; padding: 12px 14px; font-size: 13px; font-weight: 700; }
+summary:focus-visible { outline: 2px solid #2563eb; outline-offset: -3px; }
 details > p, ol, form { margin: 8px 13px; font-size: 12px; line-height: 1.55; }
 form { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 input { flex: 1; min-width: 130px; padding: 7px; border: 1px solid #cbd5e1; border-radius: 6px; }
