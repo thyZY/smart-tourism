@@ -69,8 +69,19 @@ class MultiModalRoutingTests(unittest.TestCase):
                     feature = route_between_places(
                         RoadRouteRequest(from_id=1, to_id=2, mode=mode)
                     )
-                caller.assert_called_once_with(FIRST, SECOND, mode=mode)
+                caller.assert_called_once()
+                routed_first, routed_second = caller.call_args.args
+                self.assertEqual(caller.call_args.kwargs, {"mode": mode})
+                # The original selected map coordinates remain unchanged if
+                # no source-reviewed entrance exists for this mode.
+                self.assertEqual((routed_first["lon"], routed_first["lat"]),
+                                 (FIRST["lon"], FIRST["lat"]))
+                self.assertEqual((routed_second["lon"], routed_second["lat"]),
+                                 (SECOND["lon"], SECOND["lat"]))
+                self.assertEqual(routed_first["routing_point"]["kind"],
+                                 "poi_coordinate_fallback")
                 self.assertEqual(feature["properties"]["mode"], mode)
+                self.assertEqual(len(feature["properties"]["routing_points"]), 2)
 
     def test_empty_provider_result_returns_502(self):
         with patch("backend.app.routing_routes.load_places",
