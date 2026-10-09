@@ -39,6 +39,8 @@ jobs:
         run: node tests/frontend-workflow.mjs
       - name: Exercise editable AI itinerary UI
         run: node tests/ai-edit-workflow.mjs
+      - name: Exercise confirmed multi-turn AI chat
+        run: node tests/ai-chat-workflow.mjs
       - name: Check responsive map layout contract
         run: node tests/ui-layout.mjs
       - name: Build frontend
