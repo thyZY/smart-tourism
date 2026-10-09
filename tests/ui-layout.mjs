@@ -56,7 +56,7 @@ assert(app.includes("setRoutingMarkers(result.routing_points)"), 'road route res
 assert(app.includes("getSource('routing-access-points')?.setData(emptyPlaces())"),
        'outdated entrance markers are cleared when routes are edited')
 assert(route.includes('reviewedEntranceCount'), 'route rail shows reviewed entrance coverage')
-assert(route.includes('poi_coordinate_fallback'), 'route rail discloses unreviewed POI coordinate fallback')
+assert(route.includes('入口未核实'), 'route rail discloses unreviewed POI coordinate fallback')
 
 assert(rootTemplate.includes('@planned="applyAiPlan"'), 'AI itinerary reaches the map renderer')
 assert(ai.includes("'/api/ai/itinerary'") || ai.includes("127.0.0.1:8010/api/ai/itinerary"),
