@@ -83,7 +83,7 @@ class EditItineraryTests(unittest.TestCase):
             result = replan_edited_itinerary([1, 2, 3, 4], [], "auto", 8, "09:00")
         self.assertEqual(result["dropped_place_ids"], [4])
         self.assertEqual(result["itinerary"]["optimized_order_ids"], [1, 2, 3])
-        self.assertEqual(called, [[1, 2, 3]], "known dwell overrun trimmed before expensive road calls")
+        self.assertEqual(called, [[1, 2, 3, 4], [1, 2, 3]], "first actual road time confirms overrun, then fresh route is calculated")
         self.assertTrue(result["within_time_budget"])
 
     def test_lock_prevents_auto_removal_and_first_is_always_fixed(self):
