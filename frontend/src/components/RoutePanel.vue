@@ -75,19 +75,18 @@ defineEmits(['clear', 'calculate-road', 'change-mode'])
 
 <style scoped>
 .route-panel {
-  position: absolute;
-  right: 20px;
-  bottom: 30px;
-  z-index: 10;
-  width: 295px;
-  max-height: 65vh;
+  position: relative;
+  flex: 1 1 auto;
+  width: 100%;
+  max-height: none;
+  min-height: 0;
   overflow-y: auto;
   padding: 12px;
   box-sizing: border-box;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  border: 1px solid #dbe4ee;
+  border-radius: 12px;
   background: white;
-  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+  box-shadow: 0 4px 16px #12253e26;
   color: #222;
   text-align: left;
 }
