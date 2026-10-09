@@ -338,6 +338,7 @@ const showPreview = () => {
         </p>
       </section>
       <AiChatPanel :plan="planResult" :current-route-ids="currentRouteIds"
+        :auto-trim="autoTrim"
         :disabled="!mapReady || editDirty || routeOutOfSync || replanning || planning || pending"
         @applied="applyChatReplan" />
       <details>
