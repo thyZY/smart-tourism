@@ -81,13 +81,13 @@ const hasTourismMetadata = computed(() => {
 <style scoped>
 .place-detail-panel {
   position: absolute;
-  right: 290px;
-  bottom: 30px;
-  z-index: 10;
+  right: calc(var(--rail-width, 320px) + 28px);
+  bottom: 16px;
+  z-index: 18;
   box-sizing: border-box;
   width: 310px;
-  max-width: calc(100vw - 30px);
-  max-height: min(75vh, 630px);
+  max-width: calc(100vw - 720px);
+  max-height: calc(100dvh - var(--workspace-top, 126px) - 16px);
   overflow-y: auto;
   padding: 16px;
   border: 1px solid #ddd;
@@ -114,7 +114,18 @@ dd { margin: 3px 0 0; color: #222; font-size: 13px; font-weight: 600; }
 .place-detail-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
 .place-detail-actions button { padding: 9px 8px; border: 1px solid #ddd; border-radius: 6px; background: white; color: #333; cursor: pointer; font-weight: 600; }
 .place-detail-actions button:hover, .place-detail-actions button.active { border-color: #8ab4f8; background: #e8f0fe; color: #0b57d0; }
-@media (max-width: 760px) {
-  .place-detail-panel { right: 15px; bottom: 15px; width: min(310px, calc(100vw - 30px)); }
+@media (max-width: 1180px) {
+  .place-detail-panel {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    right: auto;
+    bottom: auto;
+    transform: translate(-50%, -50%);
+    width: min(380px, calc(100vw - 36px));
+    max-width: calc(100vw - 36px);
+    max-height: min(70dvh, 580px);
+    box-shadow: 0 12px 42px rgb(0 0 0 / 26%);
+  }
 }
 </style>
