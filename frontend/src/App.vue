@@ -730,22 +730,99 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="map-wrapper">
-    <StatisticsPanel />
-    <NaturalSearchPanel :map-ready="mapReady" :center="naturalSearchCenter" @results="applyNaturalResults" @route="applyItineraryPreview" />
-    <ItineraryPreviewPanel :map-ready="mapReady" :center="naturalSearchCenter" @route="applyItineraryPreview" />
-    <RoutePanel
-      :places="selectedRoutePlaces"
-      :distance-km="routeDistanceKm"
-      :road-route="roadRoute"
-      :road-pending="roadRoutePending"
-      :road-error="roadRouteError"
-      :road-mode="roadMode"
-      :road-results="roadResults"
-      @change-mode="selectRoadMode"
-      @calculate-road="calculateRoadRoute"
-      @clear="clearRoute"
-    />
+  <main class="map-wrapper" aria-label="南京智慧文旅地图">
+    <div ref="mapContainer" class="map" aria-label="南京景点地图"></div>
+
+    <header class="map-toolbar" aria-label="地图检索工具">
+      <input
+        v-model="searchQuery"
+        class="search-box"
+        aria-label="搜索景点"
+        :disabled="loading || !mapReady"
+        type="search"
+        placeholder="搜索南京景点..."
+        @keyup.enter="searchPlaces"
+      />
+      <button class="toolbar-button nearby-button" type="button" :disabled="loading || !mapReady" @click="searchNearbyPlaces">
+        {{ loading ? '加载中…' : '附近 5km' }}
+      </button>
+      <button class="toolbar-button favorites-button" type="button"
+        :class="{ active: showFavoritesOnly }" :disabled="loading || !mapReady" @click="showFavoritePlaces">
+        我的收藏 ({{ favoritePlaceIds.length }})
+      </button>
+      <button class="toolbar-button area-button" type="button" :disabled="loading || !mapReady" @click="searchCurrentArea">
+        {{ loading ? '加载中…' : '搜索当前区域' }}
+      </button>
+
+      <div class="map-display-control" role="group" aria-label="地图显示模式">
+        <button type="button" :class="{ active: mapDisplayMode === 'points' }"
+          :disabled="!mapReady" @click="setMapDisplayMode('points')">点位</button>
+        <button type="button" :class="{ active: mapDisplayMode === 'heatmap' }"
+          :disabled="!mapReady" @click="setMapDisplayMode('heatmap')">热力图</button>
+      </div>
+    </header>
+
+    <nav class="category-filter" aria-label="景点类型筛选">
+      <button class="category-button" type="button"
+        :class="{ active: selectedCategory === '' }" @click="selectCategory('')">全部</button>
+      <button v-for="category in categories" :key="category" type="button"
+        class="category-button" :class="{ active: selectedCategory === category }"
+        @click="selectCategory(category)">{{ category }}</button>
+    </nav>
+
+    <section class="left-workspace" aria-label="景点发现">
+      <div v-if="searchMessage" class="search-message" role="status">{{ searchMessage }}</div>
+
+      <div v-if="searchResults.length" class="result-list">
+        <div class="result-count">找到 {{ searchResults.length }} 个景点</div>
+        <div v-for="feature in searchResults" :key="feature.properties.id"
+          :data-place-id="feature.properties.id"
+          :class="[
+            'result-item',
+            {
+              'result-item-selected': selectedPlaceId === feature.properties.id,
+              'result-item-route-selected': selectedRoutePlaces.some(
+                (place) => place.properties.id === feature.properties.id
+              )
+            }
+          ]"
+          @click="focusResult(feature)">
+          <button class="favorite-toggle" type="button"
+            :aria-label="isFavorite(feature.properties.id) ? '取消收藏' : '收藏'"
+            :title="isFavorite(feature.properties.id) ? '取消收藏' : '收藏'"
+            @click.stop="toggleFavorite(feature)">
+            {{ isFavorite(feature.properties.id) ? '★' : '☆' }}
+          </button>
+          <strong>{{ feature.properties.name }}</strong>
+          <div class="result-category">{{ feature.properties.category }}</div>
+        </div>
+      </div>
+
+      <div class="left-tools">
+        <ItineraryPreviewPanel :map-ready="mapReady" :center="naturalSearchCenter"
+          @route="applyItineraryPreview" />
+        <NaturalSearchPanel :map-ready="mapReady" :center="naturalSearchCenter"
+          @results="applyNaturalResults" @route="applyItineraryPreview" />
+      </div>
+    </section>
+
+    <section class="right-workspace" aria-label="行程规划与信息">
+      <RoutePanel
+        :places="selectedRoutePlaces"
+        :distance-km="routeDistanceKm"
+        :road-route="roadRoute"
+        :road-pending="roadRoutePending"
+        :road-error="roadRouteError"
+        :road-mode="roadMode"
+        :road-results="roadResults"
+        @change-mode="selectRoadMode"
+        @calculate-road="calculateRoadRoute"
+        @clear="clearRoute"
+      />
+      <ThemePanel :themes="themes" :selected-theme="selectedTheme" @select="selectTheme" />
+      <StatisticsPanel />
+    </section>
+
     <PlaceDetailPanel
       :place="selectedPlace"
       :tourism-card="tourismCard"
@@ -757,372 +834,254 @@ onUnmounted(() => {
       @toggle-favorite="selectedPlace && toggleFavorite(selectedPlace)"
       @toggle-route="selectedPlace && toggleRoutePlace(selectedPlace)"
     />
-    <ThemePanel
-      :themes="themes"
-      :selected-theme="selectedTheme"
-      @select="selectTheme"
-    />
-
-    <div class="map-display-control" role="group" aria-label="地图显示模式">
-      <button
-        type="button"
-        :class="{ active: mapDisplayMode === 'points' }"
-        :disabled="!mapReady"
-        @click="setMapDisplayMode('points')"
-      >
-        点位
-      </button>
-      <button
-        type="button"
-        :class="{ active: mapDisplayMode === 'heatmap' }"
-        :disabled="!mapReady"
-        @click="setMapDisplayMode('heatmap')"
-      >
-        热力图
-      </button>
-    </div>
-
-    <input
-      v-model="searchQuery"
-      class="search-box"
-      aria-label="搜索景点"
-      :disabled="loading || !mapReady"
-      type="text"
-      placeholder="搜索景点..."
-      @keyup.enter="searchPlaces"
-    />
-
-    <button
-      class="nearby-button"
-      :disabled="loading || !mapReady"
-      @click="searchNearbyPlaces"
-    >
-      {{ loading ? '加载中…' : '附近 5km' }}
-    </button>
-
-    <button
-      class="favorites-button"
-      :class="{ active: showFavoritesOnly }"
-      :disabled="loading || !mapReady"
-      @click="showFavoritePlaces"
-    >
-      我的收藏 ({{ favoritePlaceIds.length }})
-    </button>
-
-    <button
-      @click="searchCurrentArea"
-      :disabled="loading || !mapReady"
-    >
-      {{ loading ? '加载中...' : '搜索当前区域' }}
-    </button>
-
-  <div class="category-filter">
-    <button
-      class="category-button"
-      :class="{ active: selectedCategory === '' }"
-      @click="selectCategory('')"
-    >
-      全部
-    </button>
-
-    <button
-      v-for="category in categories"
-      :key="category"
-      class="category-button"
-      :class="{ active: selectedCategory === category }"
-      @click="selectCategory(category)"
-    >
-      {{ category }}
-    </button>
-  </div>
-
-  <div v-if="searchMessage" class="search-message" role="status">
-    {{ searchMessage }}
-  </div>
-
-  <div v-if="searchResults.length" class="result-list">
-    <div class="result-count">
-      找到 {{ searchResults.length }} 个景点
-    </div>
-
-    <div
-      v-for="feature in searchResults"
-      :key="feature.properties.id"
-      :data-place-id="feature.properties.id"
-      :class="[
-        'result-item',
-        {
-          'result-item-selected': selectedPlaceId === feature.properties.id,
-          'result-item-route-selected': selectedRoutePlaces.some(
-            (place) => place.properties.id === feature.properties.id
-          )
-        }
-      ]"
-      @click="focusResult(feature)"
-    >
-      <button
-        class="favorite-toggle"
-        type="button"
-        :aria-label="isFavorite(feature.properties.id) ? '取消收藏' : '收藏'"
-        :title="isFavorite(feature.properties.id) ? '取消收藏' : '收藏'"
-        @click.stop="toggleFavorite(feature)"
-      >
-        {{ isFavorite(feature.properties.id) ? '★' : '☆' }}
-      </button>
-      <strong>{{ feature.properties.name }}</strong>
-      <div>{{ feature.properties.category }}</div>
-    </div>
-  </div>
-
-    <div ref="mapContainer" class="map"></div>
-  </div>
+  </main>
 </template>
 
 <style>
-html,
-body,
-#app {
+html, body, #app {
   margin: 0;
   width: 100%;
   height: 100%;
 }
-
-body {
-  overflow: hidden;
-}
-
-.map {
-  width: 100vw;
-  height: 100vh;
-}
+body { overflow: hidden; }
 
 .map-wrapper {
+  --rail-width: 320px;
+  --workspace-top: 126px;
   position: relative;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  font-family: system-ui, 'Microsoft YaHei', 'Segoe UI', sans-serif;
+  font-size: 14px;
+  color: #182534;
 }
+.map { position: absolute; inset: 0; width: 100%; height: 100%; }
+.map-wrapper button, .map-wrapper input { font: inherit; }
+.map-wrapper button:focus-visible,
+.map-wrapper input:focus-visible,
+.map-wrapper summary:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+.maplibregl-popup-content { color: #243346; text-align: left; }
 
-.search-box {
+.map-toolbar {
   position: absolute;
-  top: 20px;
-  left: 20px;
-  z-index: 10;
-
-  width: 260px;
-  padding: 10px 14px;
-
-  font-size: 16px;
-  color: #222;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  background: white;
+  top: 14px;
+  left: 16px;
+  right: 76px;
+  z-index: 14;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.search-box {
+  flex: 0 1 270px;
+  min-width: 165px;
+  padding: 11px 12px;
+  border: 1px solid #d4dee9;
+  border-radius: 10px;
+  background: #fff;
+  color: #172638;
+  box-shadow: 0 3px 12px #12253e18;
   outline: none;
 }
-
-.search-box::placeholder {
-  color: #777;
-}
-
-.search-message {
-  position: absolute;
-  top: 70px;
-  left: 20px;
-  z-index: 10;
-
-  width: 260px;
-  padding: 8px 14px;
-
-  font-size: 14px;
-  color: #b42318;
-  background: white;
-  border: 1px solid #f0b8b8;
-  border-radius: 6px;
-}
-
-.nearby-button {
-  position: absolute;
-  top: 20px;
-  left: 330px;
-  z-index: 10;
-
-  padding: 10px 16px;
-  font-size: 16px;
-  color: #222;
-
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  background: white;
+.search-box::placeholder { color: #7b8797; }
+.toolbar-button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 10px 13px;
+  border: 1px solid #d4dee9;
+  border-radius: 10px;
+  background: #fff;
+  color: #1c3047;
+  box-shadow: 0 3px 12px #12253e12;
   cursor: pointer;
 }
-
-.nearby-button:disabled {
-  cursor: wait;
-  opacity: 0.65;
+.toolbar-button:hover:not(:disabled), .toolbar-button.active {
+  background: #eef5ff;
+  border-color: #9cc3ff;
 }
-
-.maplibregl-popup-content {
-  color: #222;
-  text-align: left;
-}
-
-.nearby-button:hover {
-  background: #f5f5f5;
-}
-
-.favorites-button {
-  position: absolute;
-  top: 20px;
-  left: 460px;
-  z-index: 10;
-  padding: 10px 16px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  background: white;
-  color: #222;
-  cursor: pointer;
-}
-
-.favorites-button:hover:not(:disabled),
-.favorites-button.active {
-  background: #e8f0fe;
-  border-color: #8ab4f8;
-}
-
-.favorites-button:disabled {
-  cursor: wait;
-  opacity: 0.65;
-}
-
+.toolbar-button:disabled, .map-display-control button:disabled { opacity: 0.6; cursor: wait; }
 .map-display-control {
-  position: absolute;
-  top: 20px;
-  right: 70px;
-  z-index: 10;
-
   display: flex;
+  flex: 0 0 auto;
+  margin-left: auto;
   overflow: hidden;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  background: white;
+  border: 1px solid #d4dee9;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 3px 12px #12253e12;
 }
-
 .map-display-control button {
-  padding: 8px 10px;
+  padding: 10px 11px;
   border: 0;
-  border-right: 1px solid #ddd;
-  background: white;
-  color: #333;
-  cursor: pointer;
-}
-
-.map-display-control button:last-child {
-  border-right: 0;
-}
-
-.map-display-control button:hover:not(:disabled) {
-  background: #f5f5f5;
-}
-
-.map-display-control button.active {
-  background: #e8f0fe;
-  color: #0b57d0;
-  font-weight: 600;
-}
-
-.map-display-control button:disabled {
-  cursor: wait;
-  opacity: 0.65;
-}
-
-.result-list {
-  position: absolute;
-  top: 110px;
-  left: 20px;
-  z-index: 10;
-
-  width: 280px;
-  max-height: 420px;
-  overflow-y: auto;
-
-  background: white;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-}
-
-.result-count {
-  padding: 10px 12px;
-  font-weight: bold;
-  border-bottom: 1px solid #eee;
-}
-
-.result-item {
-  position: relative;
-  padding: 10px 12px;
-  border-bottom: 1px solid #eee;
-  cursor: pointer;
-}
-
-.result-item:hover {
-  background: #f5f5f5;
-}
-
-.result-item:last-child {
-  border-bottom: none;
-}
-
-.result-item-selected {
-  background: #e8f0fe;
-  font-weight: 600;
-}
-
-.result-item-route-selected {
-  border-left: 4px solid #2563eb;
-  padding-left: 8px;
-}
-
-.favorite-toggle {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  padding: 0;
-  border: 0;
+  border-right: 1px solid #e5eaf0;
   background: transparent;
-  color: #d97706;
+  color: #37465c;
   cursor: pointer;
-  font-size: 24px;
-  line-height: 1;
+  white-space: nowrap;
 }
+.map-display-control button:last-child { border-right: 0; }
+.map-display-control button.active { background: #e6f0ff; color: #0b57d0; font-weight: 700; }
 
 .category-filter {
   position: absolute;
-  top: 70px;
-  left: 20px;
-  z-index: 10;
-
+  top: 72px;
+  left: 16px;
+  right: calc(var(--rail-width) + 32px);
+  z-index: 13;
+  box-sizing: border-box;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
-
-  width: 740px;
+  min-width: 0;
+  padding: 2px 1px 7px;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
-
 .category-button {
-  padding: 6px 10px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  background: white;
-  color: #333;
+  flex: 0 0 auto;
   white-space: nowrap;
+  padding: 8px 11px;
+  border: 1px solid #d5dfeb;
+  border-radius: 9px;
+  background: #fff;
+  color: #37465c;
+  cursor: pointer;
+  box-shadow: 0 2px 8px #12253e12;
+}
+.category-button:hover, .category-button.active {
+  background: #eaf2ff;
+  border-color: #9bbfff;
+  color: #1356ac;
+}
+.category-button.active { font-weight: 700; }
+
+.left-workspace, .right-workspace {
+  position: absolute;
+  top: var(--workspace-top);
+  bottom: 16px;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: var(--rail-width);
+  min-height: 0;
+  box-sizing: border-box;
+}
+.left-workspace { left: 16px; pointer-events: none; }
+.right-workspace { right: 16px; }
+.left-workspace > *, .right-workspace > * { pointer-events: auto; min-width: 0; }
+.left-tools { display: flex; flex-direction: column; gap: 10px; flex: 0 0 auto; }
+.search-message {
+  flex: 0 0 auto;
+  max-height: 72px;
+  overflow-y: auto;
+  padding: 9px 12px;
+  border: 1px solid #ffddbc;
+  border-radius: 9px;
+  background: #fff8ee;
+  color: #9a3412;
+  box-shadow: 0 2px 8px #12253e12;
+}
+.result-list {
+  flex: 1 1 auto;
+  min-height: 70px;
+  max-height: min(48vh, 440px);
+  overflow-y: auto;
+  border: 1px solid #dbe4ee;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 4px 16px #0c274024;
+}
+.result-count {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 11px 14px;
+  border-bottom: 1px solid #e5edf5;
+  background: #f8fbff;
+  color: #38516c;
+  font-weight: 700;
+  text-align: left;
+}
+.result-item {
+  position: relative;
+  padding: 10px 46px 10px 14px;
+  border-bottom: 1px solid #edf1f6;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+}
+.result-item:last-child { border-bottom: none; }
+.result-item:hover { background: #f3f7fd; }
+.result-item strong { display: block; font-size: 14px; color: #25374b; }
+.result-category { margin-top: 3px; color: #78899b; font-size: 12px; }
+.result-item-selected { background: #eaf3ff; }
+.result-item-route-selected { border-left: 4px solid #2563eb; padding-left: 10px; }
+.favorite-toggle {
+  position: absolute;
+  top: 8px;
+  right: 11px;
+  padding: 1px 4px;
+  border: 0;
+  background: transparent;
+  color: #db8424;
+  font-size: 22px !important;
   cursor: pointer;
 }
+.left-tools { margin-top: auto; }
 
-.category-button:hover {
-  background: #f5f5f5;
+.right-workspace > .route-panel {
+  flex: 1 1 auto;
+  min-height: 140px;
+}
+.right-workspace > .theme-panel,
+.right-workspace > .statistics-panel { flex: 0 1 auto; }
+
+@media (max-width: 1180px) {
+  .map-wrapper { --rail-width: 280px; }
+  .map-toolbar { gap: 6px; }
+  .search-box { flex-basis: 210px; }
+  .toolbar-button { padding: 10px 9px; font-size: 13px; }
 }
 
-.category-button.active {
-  background: #e8f0fe;
-  border-color: #8ab4f8;
-  font-weight: 600;
+@media (max-width: 760px) {
+  .map-wrapper { --rail-width: min(340px, calc(100vw - 24px)); --workspace-top: 124px; }
+  .map-toolbar {
+    top: 10px;
+    left: 12px;
+    right: 58px;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  .search-box { min-width: 180px; flex: 0 0 180px; }
+  .map-display-control { margin-left: 0; }
+  .category-filter { top: 70px; left: 12px; right: 12px; }
+  .left-workspace {
+    left: 12px;
+    top: var(--workspace-top);
+    bottom: calc(43vh + 24px);
+    width: var(--rail-width);
+  }
+  .right-workspace {
+    top: auto;
+    right: 12px;
+    bottom: 12px;
+    height: 42vh;
+    width: var(--rail-width);
+  }
+  .result-list { max-height: 30vh; }
+  .left-tools { gap: 6px; }
+}
+@media (max-height: 680px) and (min-width: 761px) {
+  .left-workspace, .right-workspace { --workspace-top: 110px; }
+  .result-list { max-height: 35vh; }
 }
 </style>
