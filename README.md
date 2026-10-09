@@ -358,3 +358,76 @@ npm run build
 
 注意：CI 里的 `tests/ui-layout.mjs` 是源码布局契约检测，不能替代真实浏览器视觉验收。
 本轮仅完成静态前端布局优化，不包含拖拽面板或地图移动端手势新功能。
+
+
+## 第八阶段：3—6 站道路时间矩阵与顺序优化（Draft / 待 Windows 实测）
+
+已新增 `POST /api/routing/itinerary`，输入 3—6 个**不同且真实入库**的 POI ID
+及 `mode=pedestrian|bicycle|auto`。第一站固定为出发景点，终点自由；
+后端向 Valhalla `/sources_to_targets` 请求有向道路时间矩阵，
+在最多6个景点内**精确枚举剩余站点排列**，选取矩阵总交通时间最短的顺序。
+对于6站最多120种排列，规模适合离线计算。
+随后独立请求一次 `/route` 获取优化顺序对应的**实际道路折线**（每段
+Valhalla polyline6 解码），MapLibre 用当前交通模式颜色绘制各段路线。
+
+请注意：“最短”仅指**固定首站、已选站点、指定交通方式、当前矩阵成本**的最小值；
+并非全局最佳旅游计划。道路矩阵优化代价与第二次求路得到的实际分段
+时间可能略有不同。返回优化前后矩阵时间、节约估算、各段/总道路距离
+以及总交通时间；景点游览时长从现有 `places.visit_duration`
+（如不存在则为 null）读取，全部存在时才给出包含游览时长的总时间估算。
+没有官方开放时间、门票、公交班次、休息/用餐/停车数据，不虚构可行的全天日程。
+
+如距离矩阵缺项、某些站点不可达、HTTP 请求出错或回传线路不完整，
+返回 HTTP 502 **而不伪造道路路线**；数据库 POI 不存在时返回404，
+重复景点返回422。原来的两站路线接口、直线预览、模式对比全部保留。
+使用公共 Valhalla 演示服务有速率/容量限制，仅适合少量本地验证，
+不要将其视为稳定的生产路线规划服务。
+
+本地 `backend/.env` 中可选指定 `VALHALLA_MATRIX_URL`；
+如果未设置，自动使用 `VALHALLA_ROUTE_URL` 所在服务的
+`/sources_to_targets`，无需新的 DeepSeek Key。
+
+### Windows 验收
+
+```powershell
+cd D:\smart-tourism
+git fetch origin
+git switch feat/poi-tourism-metadata-20261008
+git pull --ff-only
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_road_itinerary.py"
+node tests/frontend-workflow.mjs
+cd frontend
+npm run build
+```
+
+启动前后端后，在地图中将 3—6 个景点加入「我的路线」
+（例如：南京博物院、南京总统府、夫子庙）；
+保留第一个景点为起点，选择步行并点击「按道路时间优化多站顺序」。
+检查路线折线是否沿街道而非蓝色直线、优化站点顺序、
+道路里程/时间与已知游览时长是否显示。切换骑行、驾车后可
+分别计算并缓存结果；增删景点则自动清空所有多站缓存。
+如果路线无法计算，请截图右侧错误消息及后端请求状态；
+不要将失败标记为0公里或0分钟。
+
+可通过 PowerShell 验证接口（示例名称匹配均来自本地数据库）：
+
+```powershell
+$pois = (Invoke-RestMethod "http://127.0.0.1:8010/api/places").features
+$names = @("南京博物院", "南京总统府", "夫子庙")
+$ids = @($names | ForEach-Object {
+    $name = $_
+    $match = $pois | Where-Object { $_.properties.name -eq $name } | Select-Object -First 1
+    if (-not $match) { throw "数据库缺少景点: $name" }
+    [int]$match.properties.id
+})
+$body = @{ place_ids = $ids; mode = "pedestrian" } | ConvertTo-Json -Depth 4
+$result = Invoke-RestMethod -Uri "http://127.0.0.1:8010/api/routing/itinerary" -Method Post -ContentType "application/json" -Body $body
+$result.optimized_order_ids
+$result.duration_minutes
+$result.distance_km
+$result.geometry.features.Count
+```
+
+自动化 CI 已验证 Python 单元测试与模拟前端路线工作流；
+但公开 Valhalla 的多站矩阵和 Windows 实际地图显示
+仍需要本地联网验收。
