@@ -10,7 +10,7 @@ from backend.app.tourism_repository import fetch_tourism_place
 
 class TourismEndpointTests(unittest.TestCase):
     def test_router_is_mounted(self):
-        paths = {route.path for route in app.routes if hasattr(route, "path")}
+        paths = set(app.openapi()["paths"])
         self.assertIn("/api/tourism/places/{place_id}", paths)
         self.assertIn("/api/tourism/card", paths)
         self.assertIn("/api/places/itinerary-preview", paths)
