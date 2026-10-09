@@ -37,6 +37,8 @@ jobs:
         run: npm ci
       - name: Check mocked frontend workflow
         run: node tests/frontend-workflow.mjs
+      - name: Check responsive map layout contract
+        run: node tests/ui-layout.mjs
       - name: Build frontend
         working-directory: frontend
         run: npm run build
