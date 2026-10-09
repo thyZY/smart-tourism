@@ -742,3 +742,108 @@ npm run build
 离线回归：`tests/test_ai_conversation.py`、
 `tests/ai-chat-workflow.mjs`、`tests/ui-layout.mjs`，由
 `.github/workflows/ci.yml` 自动执行。PR保持Draft，不合并main。
+
+
+## 第十三阶段：景区入口资料与道路位置审计
+
+这轮不再假定 `places.geom` 一定是景区入口。针对玄武湖、紫金山、栖霞山、
+红山森林动物园等面积较大的区域，**景点展示点**与**适合某交通方式寻路的出入口**
+可能是不同位置。入口数据须有来源，且有人工复核记录，不能通过AI猜坐标。
+
+### 已实现的功能
+
+- 可选数据库迁移 `database/migrations/add_routing_access.sql`：
+  给现有PostGIS `places` 表添加可空 `routing_access JSONB`。
+  `places.geom` **保持原值不变**（红色景点标记和空间检索不受影响）。
+- `backend/app/access_points.py` 根据 `pedestrian`、`bicycle`、`auto`
+  分别选择入口点。要求状态 `reviewed`、来源URL、日期、真实经纬度和入口名称，
+  且入口位于对应POI原坐标**10 km以内**；拒绝异常坐标、过期的未来日期、
+  未审核、无来源或其他交通方式的入口资料。该程序检查格式和空间合理性，
+  **不会打开来源网页核实内容真实性**。
+- 两站 `POST /api/routing/route` 和多站 `POST /api/routing/itinerary`、
+  `POST /api/ai/itinerary`、`POST /api/ai/itinerary/replan` 经过同一
+  寻路核心后，均会使用当前交通方式对应的合格入口点；
+  Valhalla道路时间矩阵和折线使用的是**同一组入口坐标**。
+- 若未配置有效入口，无论是否运行了迁移都**回退为原POI坐标**。
+  API 的 `routing_points` 记录每一站使用 `reviewed_access_point`
+  或 `poi_coordinate_fallback`，并包含已有入口的审核日期、来源和坐标。
+- 右侧「我的路线」新增折叠的**道路入口资料**，显示各站审核覆盖情况、
+  未核实的回退情况和可查看的来源；地图上的**紫色圆点**只代表已审核入口，
+  红色圆点仍是景点原位置。手动更改线路会清除旧入口标记。
+- 新增只读 `GET /api/routing/access-coverage`：
+  按步行、骑行、驾车分别统计已审核入口覆盖率及逐个POI的回退状态。
+
+### Windows PostgreSQL 迁移（安全、可选）
+
+若不做迁移，原系统也能正常寻路；只是不会使用入口资料。
+
+1. 在 **pgAdmin** 打开 smart-tourism 对应的本地PostgreSQL数据库，
+   选择 Query Tool。
+2. 打开项目中的 `database/migrations/add_routing_access.sql`，
+   复制其中SQL并执行一次。该迁移不删除、不移动原有POI坐标。
+3. 确认字段已存在：
+
+```sql
+SELECT name, geom, routing_access
+FROM places
+WHERE name IN ('玄武湖公园', '紫金山', '红山森林动物园');
+```
+
+4. 在浏览器打开 `http://127.0.0.1:8010/api/routing/access-coverage`。
+   如果尚未逐条补入真实入口，统计为0是**正确结果**，不是寻路失败。
+
+### 人工补充入口资料的格式
+
+单条 `routing_access` 应为 JSONB 对象，按交通方式分别保存独立入口：
+例如已核查的步行入口使用 `pedestrian`，汽车能到达的入口使用 `auto`。
+**绝不可将公园几何中心、在线路线吸附结果、AI回答中的经纬度直接标成入口。**
+
+建议人工记录字段：
+
+| 字段 | 示例/要求 |
+| --- | --- |
+| 模式 | `pedestrian` / `bicycle` / `auto` |
+| `status` | 初始 `draft`；经过人工核验后才可以填 `reviewed` |
+| `name` | 经过核对的入口名称 |
+| `lng`, `lat` | 来源明确的WGS84十进制度经纬度，顺序为经度、纬度 |
+| `source_url` | 可回查的地图、景区公告或权威资料网页URL |
+| `reviewed_on` | 人工核对日期，如 `2026-10-10` |
+
+保留缺失状态的**安全草稿**（不含任何捏造坐标）：
+
+```sql
+UPDATE places
+SET routing_access = COALESCE(routing_access, '{}'::jsonb)
+    || '{"pedestrian":{"status":"draft"}}'::jsonb
+WHERE name = '玄武湖公园';
+```
+
+这只会创建**不可用于寻路的草稿**，路线仍按照 `places.geom` 计算。
+只有人工核实入口的坐标、名称、交通方式、URL和日期之后，
+再将其对应模式替换为完整 `reviewed` 记录。
+迁移及示例SQL均不会创建已核实的南京景区入口；目前仓库没有可证明
+每个景点入口的坐标来源，因此**不会自动批量填充40条景点**。
+
+### 回归检查与本机验收
+
+```powershell
+cd D:\smart-tourism
+git fetch origin
+git switch feat/poi-tourism-metadata-20261008
+git pull --ff-only
+
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_routing_access.py"
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"
+node tests/frontend-workflow.mjs
+node tests/ui-layout.mjs
+cd frontend
+npm run build
+```
+
+重启FastAPI、刷新前端，选2—4个景点分别计算步行和驾车路线。
+**未录入入口时，右侧应显示全部采用原坐标，地图不出现紫色入口标记**；
+这说明回退机制正常。日后录入一条经过人工审查的真实入口后，
+再次计算对应交通方式线路，右侧审核覆盖数增加，地图在相应位置出现
+紫色圆点；其他交通方式仍使用原坐标或其单独核验入口。
+本轮CI通过的是离线合成坐标模拟，不代表真实出入口已核实，
+也不保证景区开放、通行或公共Valhalla的实时准确性。
