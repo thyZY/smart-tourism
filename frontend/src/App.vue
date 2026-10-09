@@ -27,6 +27,9 @@ const routeDistanceKm = ref(0)
 const roadRoute = ref(null)
 const roadRoutePending = ref(false)
 const roadRouteError = ref('')
+const roadMode = ref('pedestrian')
+const roadResults = ref({})
+const roadModeColors = { pedestrian: '#16a34a', bicycle: '#f97316', auto: '#2563eb' }
 let roadRequestController = null
 const selectedTheme = ref(null)
 const favoriteStorageKey = 'smart-tourism-favorites'
@@ -165,16 +168,36 @@ const calculateDistanceKm = (from, to) => {
   return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
-const resetRoadRoute = () => {
+const resetRoadRoute = (clearResults = true) => {
   roadRequestController?.abort()
   roadRequestController = null
   roadRoute.value = null
   roadRoutePending.value = false
   roadRouteError.value = ''
+  if (clearResults) roadResults.value = {}
   map?.getSource('road-route')?.setData(emptyRoute())
   if (map?.getLayer('route-line')) {
     map.setLayoutProperty('route-line', 'visibility', 'visible')
   }
+}
+
+const showRoadResult = (feature) => {
+  roadRoute.value = feature.properties
+  map?.getSource('road-route')?.setData({ type: 'FeatureCollection', features: [feature] })
+  if (map?.getLayer('road-route')) {
+    map.setPaintProperty('road-route', 'line-color', roadModeColors[feature.properties.mode])
+  }
+  if (map?.getLayer('route-line')) {
+    map.setLayoutProperty('route-line', 'visibility', 'none')
+  }
+}
+
+const selectRoadMode = (mode) => {
+  if (!Object.prototype.hasOwnProperty.call(roadModeColors, mode)) return
+  resetRoadRoute(false)
+  roadMode.value = mode
+  const cached = roadResults.value[mode]
+  if (cached) showRoadResult(cached)
 }
 
 const updateRoute = () => {
@@ -243,19 +266,19 @@ const calculateRoadRoute = async () => {
     const response = await axios.post('http://127.0.0.1:8010/api/routing/route', {
       from_id: from.properties.id,
       to_id: to.properties.id,
-      mode: 'pedestrian'
+      mode: roadMode.value
     }, { signal: controller.signal, timeout: 20000 })
     if (controller.signal.aborted || roadRequestController !== controller) return
     const feature = response.data
     if (feature.type !== 'Feature' || feature.geometry?.type !== 'LineString' ||
-        !Array.isArray(feature.geometry.coordinates) || feature.geometry.coordinates.length < 2) {
-      throw new Error('道路寻路结果缺少有效折线')
+        !Array.isArray(feature.geometry.coordinates) || feature.geometry.coordinates.length < 2 ||
+        feature.properties?.mode !== roadMode.value ||
+        !Number.isFinite(feature.properties?.distance_km) ||
+        !Number.isFinite(feature.properties?.duration_minutes)) {
+      throw new Error('道路寻路结果缺少有效折线或交通方式不一致')
     }
-    roadRoute.value = feature.properties
-    map.getSource('road-route')?.setData({ type: 'FeatureCollection', features: [feature] })
-    if (map.getLayer('route-line')) {
-      map.setLayoutProperty('route-line', 'visibility', 'none')
-    }
+    roadResults.value = { ...roadResults.value, [roadMode.value]: feature }
+    showRoadResult(feature)
   } catch (error) {
     if (controller.signal.aborted || axios.isCancel(error)) return
     roadRoute.value = null
@@ -662,7 +685,8 @@ onMounted(() => {
       paint: {
         'line-color': '#2563eb',
         'line-width': 5,
-        'line-opacity': 0.85
+        'line-opacity': 0.85,
+        'line-dasharray': [2, 2]
       }
     })
     map.addLayer({
@@ -716,6 +740,9 @@ onUnmounted(() => {
       :road-route="roadRoute"
       :road-pending="roadRoutePending"
       :road-error="roadRouteError"
+      :road-mode="roadMode"
+      :road-results="roadResults"
+      @change-mode="selectRoadMode"
       @calculate-road="calculateRoadRoute"
       @clear="clearRoute"
     />
