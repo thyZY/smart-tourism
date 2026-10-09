@@ -22,6 +22,23 @@ assert(rootTemplate.includes('v-show="leftView === \'places\'"'), 'POI list has 
 assert(rootTemplate.includes('v-show="leftView === \'ai\'"'), 'AI timeline has its own pane')
 assert(app.includes('.places-workspace, .ai-workspace'), 'left views are flex height-constrained')
 assert(app.includes('.places-workspace > .result-list'), 'result list scrolls inside list pane')
+assert(rootTemplate.indexOf('class="result-list"') < rootTemplate.indexOf('<ItineraryPreviewPanel'),
+       'classic itinerary preview remains directly below the scenic list')
+assert(rootTemplate.includes(':class="{ \'preview-expanded\': previewExpanded }"'),
+       'preview expanded state controls parent height allocation')
+assert(rootTemplate.includes('@expanded-change="previewExpanded = $event"'),
+       'native preview disclosure notifies the parent on expand and collapse')
+assert(preview.includes("emit('expanded-change', expanded.value)"),
+       'preview emits both open and closed state')
+assert(preview.includes('@toggle="handleToggle"'),
+       'native details toggle is observable')
+assert(app.includes('.places-workspace.preview-expanded > .result-list'),
+       'expanded preview shortens scenic list height')
+assert(app.includes('.places-workspace.preview-expanded > .itinerary-tool'),
+       'expanded preview gets additional vertical space')
+assert(app.includes('max-height: min(31vh, 270px)'), 'expanded list receives reduced cap')
+assert(app.includes('max-height: min(51vh, 440px)'), 'collapsed list starts with readable cap')
+
 assert(app.includes('.ai-workspace > .natural-search'), 'AI content scrolls in its own pane')
 assert(ai.includes('max-height: none;'), 'generated AI itinerary has no competing fixed height limit')
 assert(rootTemplate.includes('class="right-workspace"'), 'routing, themes and statistics share the right rail')
