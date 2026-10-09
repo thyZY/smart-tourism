@@ -61,6 +61,19 @@ class ConversationPreviewTests(unittest.TestCase):
         self.assertTrue(all("仅" not in msg or "预览" in msg
                             for msg in preview["warnings"] if "仅" in msg))
 
+    def test_named_replacement_uses_exact_postgis_name(self):
+        names = [p["properties"]["name"] for p in CURRENT]
+        candidates = [p["properties"]["name"] for p in CANDIDATES]
+        operations = rule_operations(
+            "第二站换成玄武湖公园", names, candidates
+        )
+        self.assertEqual(operations[0]["replacement_name"], "玄武湖公园")
+        preview = propose_edit(
+            operations, [1, 2, 3, 4], [], "auto", 8, "09:00",
+            CURRENT, CANDIDATES,
+        )
+        self.assertEqual(preview["proposed"]["place_ids"], [1, 5, 3, 4])
+
     def test_lock_named_stop_and_refuse_replace(self):
         ops = rule_operations("南京总统府必须保留",
                               [p["properties"]["name"] for p in CURRENT])
