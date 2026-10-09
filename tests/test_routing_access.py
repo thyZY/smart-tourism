@@ -1,7 +1,9 @@
 """Source-gated scenic access routing tests: synthetic coordinates, no network."""
 import unittest
 from datetime import date, timedelta
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+from backend.app.main import app
+from backend.app.routing_routes import scenic_access_coverage
 
 from backend.app.access_points import apply_routing_access, routing_provenance
 from backend.app.road_itinerary import plan_itinerary
@@ -60,6 +62,27 @@ class ReviewedAccessTests(unittest.TestCase):
         self.assertEqual(routing_provenance(driving)["access_name"], "示例机动车入口")
         self.assertNotIn("routing_point", place, "must not mutate original POI")
         self.assertEqual((place["lon"], place["lat"]), (118.79, 32.04))
+
+    def test_access_coverage_reports_verified_and_missing_without_network(self):
+        self.assertIn("/api/routing/access-coverage", app.openapi()["paths"])
+        cursor = MagicMock()
+        cursor.fetchall.return_value = [
+            (1, "测试景区", 118.79, 32.04, {
+                "pedestrian": PED_POINT, "auto": AUTO_POINT,
+            }),
+            (2, "缺入口资料", 118.80, 32.05, None),
+        ]
+        conn = MagicMock()
+        conn.cursor.return_value.__enter__.return_value = cursor
+        with patch("backend.app.routing_routes.get_db_connection", return_value=conn):
+            report = scenic_access_coverage()
+        self.assertEqual(report["total_places"], 2)
+        self.assertEqual(report["reviewed_by_mode"],
+                         {"pedestrian": 1, "bicycle": 0, "auto": 1})
+        self.assertEqual(report["fallback_by_mode"]["bicycle"], 2)
+        self.assertEqual(report["places"][1]["modes"]["auto"],
+                         "poi_coordinate_fallback")
+        conn.close.assert_called_once()
 
     def test_future_date_and_bad_url_rejected(self):
         tomorrow = (date.today() + timedelta(days=1)).isoformat()
