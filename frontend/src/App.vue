@@ -29,6 +29,11 @@ const roadRoutePending = ref(false)
 const roadRouteError = ref('')
 const roadMode = ref('pedestrian')
 const roadResults = ref({})
+const multiRoute = ref(null)
+const multiPending = ref(false)
+const multiError = ref('')
+const multiResults = ref({})
+let multiRequestController = null
 const roadModeColors = { pedestrian: '#16a34a', bicycle: '#f97316', auto: '#2563eb' }
 let roadRequestController = null
 const selectedTheme = ref(null)
@@ -181,6 +186,26 @@ const resetRoadRoute = (clearResults = true) => {
   }
 }
 
+const resetMultiRoute = (clearResults = true) => {
+  multiRequestController?.abort()
+  multiRequestController = null
+  multiRoute.value = null
+  multiPending.value = false
+  multiError.value = ''
+  if (clearResults) multiResults.value = {}
+}
+
+const showMultiRoute = (result) => {
+  multiRoute.value = result
+  map?.getSource('road-route')?.setData(result.geometry)
+  if (map?.getLayer('road-route')) {
+    map.setPaintProperty('road-route', 'line-color', roadModeColors[result.mode])
+  }
+  if (map?.getLayer('route-line')) {
+    map.setLayoutProperty('route-line', 'visibility', 'none')
+  }
+}
+
 const showRoadResult = (feature) => {
   roadRoute.value = feature.properties
   map?.getSource('road-route')?.setData({ type: 'FeatureCollection', features: [feature] })
@@ -195,14 +220,21 @@ const showRoadResult = (feature) => {
 const selectRoadMode = (mode) => {
   if (!Object.prototype.hasOwnProperty.call(roadModeColors, mode)) return
   resetRoadRoute(false)
+  resetMultiRoute(false)
   roadMode.value = mode
-  const cached = roadResults.value[mode]
-  if (cached) showRoadResult(cached)
+  if (selectedRoutePlaces.value.length >= 3) {
+    const cachedMulti = multiResults.value[mode]
+    if (cachedMulti) showMultiRoute(cachedMulti)
+  } else {
+    const cached = roadResults.value[mode]
+    if (cached) showRoadResult(cached)
+  }
 }
 
 const updateRoute = () => {
   // Every selection change invalidates an earlier road geometry or in-flight request.
   resetRoadRoute()
+  resetMultiRoute()
   const routeCoordinates = selectedRoutePlaces.value
     .map((feature) => feature.geometry?.coordinates)
     .filter((coordinates) => Array.isArray(coordinates))
@@ -287,6 +319,52 @@ const calculateRoadRoute = async () => {
     if (roadRequestController === controller) {
       roadRequestController = null
       roadRoutePending.value = false
+    }
+  }
+}
+
+const calculateMultiRoute = async () => {
+  const places = selectedRoutePlaces.value
+  if (!mapReady.value || !map || multiPending.value || places.length < 3 || places.length > 6) return
+
+  const controller = new AbortController()
+  multiRequestController = controller
+  multiPending.value = true
+  multiError.value = ''
+  try {
+    const response = await axios.post('http://127.0.0.1:8010/api/routing/itinerary', {
+      place_ids: places.map(p => p.properties.id),
+      mode: roadMode.value
+    }, { signal: controller.signal, timeout: 60000 })
+    if (controller.signal.aborted || multiRequestController !== controller) return
+    const result = response.data
+    const selectedIds = places.map(p => p.properties.id)
+    if (result.mode !== roadMode.value ||
+        result.geometry?.type !== 'FeatureCollection' ||
+        result.geometry.features?.length !== selectedIds.length - 1 ||
+        result.optimized_order_ids?.length !== selectedIds.length ||
+        result.optimized_order_ids[0] !== selectedIds[0] ||
+        result.optimized_order_ids.some(id => !selectedIds.includes(id)) ||
+        !Number.isFinite(result.distance_km) ||
+        !Number.isFinite(result.duration_minutes)) {
+      throw new Error('多站路线响应与景点选择不一致')
+    }
+    multiResults.value = { ...multiResults.value, [roadMode.value]: result }
+    showMultiRoute(result)
+  } catch (error) {
+    if (controller.signal.aborted || axios.isCancel(error)) return
+    multiRoute.value = null
+    multiError.value = typeof error.response?.data?.detail === 'string'
+      ? error.response.data.detail
+      : '多站道路规划失败；仍可使用原有直线顺序预览'
+    map?.getSource('road-route')?.setData(emptyRoute())
+    if (map?.getLayer('route-line')) {
+      map.setLayoutProperty('route-line', 'visibility', 'visible')
+    }
+  } finally {
+    if (multiRequestController === controller) {
+      multiRequestController = null
+      multiPending.value = false
     }
   }
 }
@@ -722,6 +800,7 @@ onUnmounted(() => {
   mapReady.value = false
   detailRequestController?.abort()
   roadRequestController?.abort()
+  multiRequestController?.abort()
   requestController?.abort()
   clearPopup()
   map?.remove()
@@ -815,6 +894,11 @@ onUnmounted(() => {
         :road-error="roadRouteError"
         :road-mode="roadMode"
         :road-results="roadResults"
+        :multi-route="multiRoute"
+        :multi-pending="multiPending"
+        :multi-error="multiError"
+        :multi-results="multiResults"
+        @calculate-multi="calculateMultiRoute"
         @change-mode="selectRoadMode"
         @calculate-road="calculateRoadRoute"
         @clear="clearRoute"
