@@ -152,6 +152,9 @@ async def personalized_itinerary(request: PersonalizedItineraryRequest):
 
     if intent.get("duration_days") is not None and intent["duration_days"] != 1:
         raise HTTPException(status_code=422, detail="当前仅支持单日行程，请输入一天的旅游需求")
+    departure = int(request.start_time[:2]) * 60 + int(request.start_time[3:])
+    if departure + request.budget_hours * 60 > 1440:
+        raise HTTPException(status_code=422, detail="单日行程时间预算跨越午夜，请提前出发或缩短可用时间")
 
     origin = (request.lng, request.lat)
     mode = resolve_travel_mode(query, intent, mode_override)
