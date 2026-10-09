@@ -2,7 +2,7 @@
 import axios from 'axios'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 
-const expanded = ref(true)
+const expanded = ref(false)
 const loading = ref(true)
 const errorMessage = ref('')
 const statistics = ref({
@@ -92,100 +92,42 @@ onUnmounted(() => {
 
 <style scoped>
 .statistics-panel {
-  position: absolute;
-  top: 110px;
-  right: 20px;
-  z-index: 10;
-  width: 250px;
-  overflow: hidden;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  position: relative;
+  width: 100%;
+  min-height: 0;
+  max-height: 38vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+  border: 1px solid #dbe4ee;
+  border-radius: 12px;
   background: white;
-  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+  color: #26374b;
+  box-shadow: 0 3px 14px #12253e1c;
 }
-
 .statistics-toggle {
   width: 100%;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border: 0;
-  border-bottom: 1px solid #eee;
-  background: white;
-  color: #333;
+  background: #fff;
+  color: #26374b;
   cursor: pointer;
-  font-weight: 600;
+  font-weight: 700;
   text-align: left;
 }
-
-.statistics-toggle:hover {
-  background: #f5f5f5;
-}
-
-.statistics-panel.collapsed {
-  width: 100px;
-}
-
-.statistics-panel.collapsed .statistics-toggle {
-  border-bottom: 0;
-  text-align: center;
-}
-
-.statistics-content {
-  padding: 12px;
-}
-
-h2,
-h3 {
-  margin: 0;
-  color: #222;
-}
-
-h2 {
-  font-size: 18px;
-}
-
-h3 {
-  margin-top: 14px;
-  font-size: 14px;
-}
-
-.statistics-total,
-.category-counts li {
+.statistics-toggle:hover { background: #f6f9fc; }
+.statistics-content { padding: 0 14px 12px; }
+.statistics-content h2 { font-size: 15px; margin: 4px 0 8px; }
+.statistics-content h3 { font-size: 13px; margin: 12px 0 6px; }
+.statistics-total, .category-counts li {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
 }
-
-.statistics-total {
-  margin-top: 10px;
-}
-
-.statistics-total strong,
-.category-counts strong {
-  color: #0b57d0;
-}
-
-.category-counts {
-  margin: 8px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.category-counts li {
-  padding: 5px 0;
-  border-bottom: 1px solid #f0f0f0;
-  font-size: 14px;
-}
-
-.category-counts li:last-child {
-  border-bottom: 0;
-}
-
-.statistics-status {
-  margin: 12px 0 0;
-  color: #555;
-}
-
-.statistics-status.error {
-  color: #b42318;
-}
+.statistics-total strong, .category-counts strong { color: #0b57d0; }
+.category-counts { padding: 0; margin: 0; list-style: none; }
+.category-counts li { border-bottom: 1px solid #eff2f5; font-size: 12px; }
+.statistics-status { margin: 8px 0; color: #56677d; }
+.statistics-status.error { color: #b42318; }
 </style>
