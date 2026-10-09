@@ -142,13 +142,13 @@ class ConversationPreviewTests(unittest.TestCase):
             history=[{"role": "user", "content": "推荐城市公园"}]
         )
         with patch("backend.app.ai.itinerary_editor.fetch_selected_features",
-                   return_value=CURRENT), \\
-             patch("backend.app.ai.router.query_pois", return_value=CANDIDATES), \\
+                   return_value=CURRENT), \
+             patch("backend.app.ai.router.query_pois", return_value=CANDIDATES), \
              patch("backend.app.ai.conversation.parse_chat_edit",
                    new=AsyncMock(return_value=(
                        rule_operations(request.message,
                                        [p["properties"]["name"] for p in CURRENT]),
-                       "rule_based"))), \\
+                       "rule_based"))), \
              patch("backend.app.ai.itinerary_editor.replan_edited_itinerary") as forbidden:
             response = asyncio.run(conversational_edit_preview(request))
         self.assertTrue(response["needs_confirmation"])
