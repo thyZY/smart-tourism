@@ -899,3 +899,89 @@ MapLibre/OSM依赖的WGS84存在系统偏移。**不能把平台坐标直接
 
 当前无需再次执行 `ALTER TABLE`，数据库结构与原40条POI保持原样；
 也不会因为新增候选文件而导致前端突然出现紫色入口标记。
+
+
+## 第十四阶段·空间复核：GCJ-02→WGS84和OSM步行门节点审计
+
+在之前两处玄武湖入口的初步来源审查基础上，新增了一个**只读、可本机复现的空间审核工作流**。
+目前**未得到真实OSM闸门/步道节点的在线响应，因此尚未完成“可通行入口”的认证**。
+任何结果都不会自动升级为 `reviewed`，不会运行SQL、改变PostGIS或影响Valhalla路线。
+
+### 已完成的坐标转换（仍属草稿）
+
+使用标准的 GCJ-02 → WGS84 迭代逆变换计算高德两处原始标点：
+
+| 候选 | GCJ-02 原始经度/纬度（高德） | WGS84转换结果经度/纬度 | 核验状态 |
+|---|---|---|---|
+| 玄武门 | 118.787506 / 32.070519 | **118.78229935 / 32.07257793** | 尚未证明与实际可通过的OSM步道相连 |
+| 解放门 | 118.796638 / 32.062228 | **118.79144511 / 32.06429665** | 尚未证明与实际可通过的OSM步道相连 |
+
+玄武门转换点与 [Wikidata城门地标](https://www.wikidata.org/wiki/Q17059567)
+提供的坐标相差约 **5.9米**，构成一个地标层面的空间一致性线索，
+**但Wikidata原坐标缺少引用来源、城门与真实游园通行点并不必然一致**。
+算法坐标精度不等于实地门位精度。
+
+仓库中的
+`data/entrance_evidence/xuanwu_lake_unreviewed_wgs84_estimates.geojson`
+包含2个**未认证**的WGS84转换标点，可在QGIS中直接加载进行目视复核；
+不会进入前端正式入口图层或PostGIS的 `reviewed` 字段。
+
+### 新增可复现的 OSM 步道/闸门核查脚本
+
+`scripts/audit_xuanwu_osm.py` **只通过HTTPS读取OpenStreetMap Overpass**
+真实闸门节点和附近的步行路段，评估：
+- `entrance`、`barrier=gate`、`kissing_gate`等OSM节点及标签；
+- 节点距已转换的高德候选点的球面距离；
+- 节点是否属于允许步行的 OSM way（检查节点ID是否真正属于way的nodes），
+  并排除 `foot=no`、`access=private/no`；
+- OSM节点详情可打开的链接、潜在无障碍/开放限制；
+- **未作的验证**：OSM图纸并不能自动证明门禁开放、入口合法、实时通行，
+  也不能替代实际Valhalla路由和人工审核。
+
+**Windows PowerShell：**
+
+```powershell
+cd D:\smart-tourism
+git fetch origin
+git switch feat/poi-tourism-metadata-20261008
+git pull --ff-only
+
+.\.venv\Scripts\python.exe scripts\audit_xuanwu_osm.py --online
+```
+
+成功后会生成两个文件（`*_local` 已加入.gitignore，不会自动提交）：
+
+1. `data\entrance_evidence\xuanwu_lake_osm_audit_local.json`，
+   包含两个入口的搜索范围、OSM节点ID、来源链接、位置距离、道路关联程度、
+   被禁止步行的标签及所有审核警告；
+2. `data\entrance_evidence\xuanwu_lake_osm_audit_local.geojson`，
+   是QGIS可打开的地图点位：原始高德转换草稿和找到的OSM闸门候选，
+   **全部标记未审核**。
+
+导入QGIS：菜单「图层 → 添加图层 → 添加矢量图层」选择生成的GeoJSON；
+坐标使用WGS84（EPSG:4326）。与OSM底图叠加，检查各点是否真的位于
+对应景区门的步行通道，排除附近地铁口或城墙地标。
+
+**如果Overpass访问失败**（例如429、连接超时），脚本会明确报错，
+不会创建虚假OSM节点或更新数据库。可以稍后重试，或通过网页版
+[Overpass Turbo](https://overpass-turbo.eu/) 手动执行JSON报告中的
+`osm_query` 查询（实时在线运行失败时可以参考脚本的 `build_query`）。
+也可以从已有外部OSM工具取得这两处区域的Overpass JSON，
+保存为 `xuanwumen_west.json`、`jiefangmen_south.json` 后运行：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\audit_xuanwu_osm.py --osm-json-dir D:\osm-gate-snapshots
+```
+
+此脚本不依赖DeepSeek或PostGIS，不需要数据库迁移，
+且可通过 `python -m unittest discover -s tests -p "test_xuanwu_osm_audit.py"`
+进行纯离线自检。
+
+**审核标准**：必须先在QGIS/OSM确认至少一个候选确实是
+可从城市步行网络进入湖区的开口，并核验可靠的近期来源及景区开放安排。
+确认前 **不要** 手动写 `status=reviewed` 或将近似转换点当作导航入口。
+机动车落客点尚无独立验证，不进行 `auto` 入口设置。
+
+下一步可将本机生成的JSON或QGIS截图发回；再根据实际OSM闸门节点、
+交通方式和景区官方资料，逐个确定可认证的入口，生成有回滚说明的SQL，
+并实测入口使用前后的 Valhalla 路程。
