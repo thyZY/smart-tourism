@@ -119,8 +119,9 @@ def build_timeline(itinerary, selected, budget_minutes, start_time):
 
 
 def build_personalized_itinerary(features, origin, intent, mode, max_stops,
-                                  budget_hours, start_time):
-    selected = choose_candidates(features, origin, max_stops, round(budget_hours * 60))
+                                  budget_hours, start_time, selected=None):
+    if selected is None:
+        selected = choose_candidates(features, origin, max_stops, round(budget_hours * 60))
     chosen_ids = [f["properties"]["id"] for f in selected]
     route = plan_itinerary(chosen_ids, mode)
     if (route["optimized_order_ids"][0] != chosen_ids[0] or
