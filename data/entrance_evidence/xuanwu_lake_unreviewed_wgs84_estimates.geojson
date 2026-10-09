@@ -1,0 +1,43 @@
+{
+  "type": "FeatureCollection",
+  "name": "xuanwu_lake_unreviewed_wgs84_converted_marker_estimates_20261010",
+  "attribution": "Source markers © Amap providers; conversion by project script. This file contains factual coordinates with attribution links, not reproduced map tiles.",
+  "coordinate_reference_system": "EPSG:4326 WGS84 (converted approximate coordinates)",
+  "status": "draft_review_only_not_entrance_not_for_routing",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [118.78229935, 32.07257793] },
+      "properties": {
+        "candidate_id": "xuanwumen_west",
+        "name": "玄武湖景区（玄武门）",
+        "kind": "converted_amap_poi_marker_not_verified_entrance",
+        "status": "draft",
+        "map_marker_source": "https://www.amap.com/place/B00190B4FQ",
+        "official_presence_source": "https://www.xuanwuhu.net/lyfw/lyfw2.aspx",
+        "original_gcj02_lng": 118.787506,
+        "original_gcj02_lat": 32.070519,
+        "conversion_method": "iterative_inverse_gcj02_to_wgs84",
+        "osm_walkway_verified": false,
+        "approved_for_valhalla": false
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [118.79144511, 32.06429665] },
+      "properties": {
+        "candidate_id": "jiefangmen_south",
+        "name": "玄武湖景区（解放门）",
+        "kind": "converted_amap_poi_marker_not_verified_entrance",
+        "status": "draft",
+        "map_marker_source": "https://ditu.amap.com/place/B0019095PK",
+        "official_presence_source": "https://www.xuanwuhu.net/lyfw/detail.aspx?id=207",
+        "original_gcj02_lng": 118.796638,
+        "original_gcj02_lat": 32.062228,
+        "conversion_method": "iterative_inverse_gcj02_to_wgs84",
+        "osm_walkway_verified": false,
+        "approved_for_valhalla": false
+      }
+    }
+  ]
+}
