@@ -671,3 +671,74 @@ npm run build
 Github Actions 只覆盖无密钥、无真实数据库和无公共路网请求的
 单元/模拟交互测试；南京真实地点替换、超时删减与浏览器交互
 仍需要本机端到端验收。
+
+
+## 第十二阶段：AI 多轮对话修改行程（预览→确认→重新规划）
+
+在已生成 AI 一日游行程后，左侧「AI 行程」中新增**AI 多轮行程助手**（默认折叠，
+点标题展开）。助手不是无约束聊天生成攻略，而是把自然语言转换为
+**经过 PostGIS 校验的结构化行程编辑建议**。
+
+### 操作流程
+
+1. 从 DeepSeek（无Key或请求失败则使用安全规则降级）提取有限的编辑操作：
+   锁定 / 解锁 / 替换 / 移除景点、步行骑行驾车模式、3—12小时预算、出发时间。
+   例如：「第二站换成玄武湖公园，第三站必须保留」。
+2. 请求 `POST /api/ai/itinerary/chat/preview`（**只读预览**）。
+   后端重新从PostGIS读取当前景点及候选景点，校验真实ID、真实名称、
+   修改站点、是否首站、是否锁定、最少3站、预算和午夜限制。
+   如按兴趣类别替换（例如「第二站换成自然风光类」），只从数据库存在的类别
+   和真实景点中确定性选择，按与原站点的球面距离近似排列候选；
+   此处**还没有计算实际道路**。具体景点名优先按数据库精确匹配。
+3. 前端展示变更清单、拟保留站点、交通方式和时间预算。
+   **取消**或继续提出新问题不会修改地图；新的未确认指令会丢弃上一份预览。
+   提出互相矛盾的条件会得到明确提示，而不是擅自解除锁定。
+4. 用户点击「确认修改并重新规划」后，才调用已经验收的
+   `POST /api/ai/itinerary/replan`，通过Valhalla重新计算道路矩阵与
+   多段实际路线，并在成功后更新原有地图、右侧路线面板和AI日程。
+   路网失败或预算冲突时，**原有有效路线不变**。
+5. 对话保留最近最多6条简短历史帮助解析后续要求；对话只在浏览器
+   当前页面内维护，不在服务器持久保存。确认后可以继续输入下一轮。
+   若对话期间地图或手动编辑发生变化，旧预览及异步返回结果会被阻止应用。
+
+可发送的测试话术：
+- 「第二站换成玄武湖公园」— 景点精确匹配，需确保玄武湖尚未入选；
+- 「第三站必须保留」— 必去景点锁定；
+- 「改成骑行，预算调整为6小时」— 下一轮修改已有行程；
+- 「取消锁定第三站」— 解锁操作；
+- 「删除第四站」— 仅当现有站点≥4且该站未锁定时可执行。
+
+**设计边界：** 不会调用模型自动执行数据库写入、编造POI或道路。
+DeepSeek仅解析编辑意图，路径信息依然由PostGIS和Valhalla确定；
+若无Key，规则降级能覆盖部分明确指令，但并不是通用闲聊或完全
+自由表达的聊天机器人。预算/营业时间/公共交通限制与上一阶段相同。
+聊天文本在配置Key时会发送给DeepSeek，请勿输入隐私信息；
+仓库不存放或提交Key。
+
+### Windows 验收
+
+```powershell
+cd D:\smart-tourism
+git fetch origin
+git switch feat/poi-tourism-metadata-20261008
+git pull --ff-only
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_ai_conversation.py"
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"
+node tests/ai-chat-workflow.mjs
+node tests/ai-edit-workflow.mjs
+node tests/frontend-workflow.mjs
+node tests/ui-layout.mjs
+cd frontend
+npm run build
+```
+
+重启后端（新增API），前端刷新。先用「南京一天历史文化游」生成4站AI行程，
+在「AI 多轮行程助手」输入「第三站必须保留」并点击「预览修改」，
+检查地图没有变化；点「确认修改并重新规划」检查保留锁定及实际路网。
+第二轮输入「改成骑行」并再次确认；再试一次取消预览。
+最后尝试锁定冲突、将起点删除及手动改地图之后点击旧确认按钮，
+确保系统阻止过期操作。公共Valhalla实际可用性仍需联网验收。
+
+离线回归：`tests/test_ai_conversation.py`、
+`tests/ai-chat-workflow.mjs`、`tests/ui-layout.mjs`，由
+`.github/workflows/ci.yml` 自动执行。PR保持Draft，不合并main。
