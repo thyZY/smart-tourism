@@ -245,3 +245,69 @@ async def edited_itinerary(request: EditItineraryRequest):
             status_code=502,
             detail="道路时间矩阵或分段路线不可用，无法可靠地重新规划",
         ) from exc
+
+
+class ChatHistoryTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=300)
+
+
+class ConversationalPreviewRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=300)
+    place_ids: list[int] = Field(min_length=3, max_length=6)
+    locked_place_ids: list[int] = Field(default_factory=list, max_length=6)
+    transport_mode: Literal["pedestrian", "bicycle", "auto"] = "pedestrian"
+    budget_hours: int = Field(default=8, ge=3, le=12)
+    start_time: str = Field(default="09:00", pattern=r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
+    history: list[ChatHistoryTurn] = Field(default_factory=list, max_length=6)
+
+
+@router.post("/itinerary/chat/preview")
+async def conversational_edit_preview(request: ConversationalPreviewRequest):
+    """LLM only proposes validated changes. NEVER apply or call Valhalla here."""
+    from .conversation import parse_chat_edit, propose_edit
+    from .itinerary_editor import fetch_selected_features
+
+    if len(set(request.place_ids)) != len(request.place_ids) or any(
+        type(item) is not int or item <= 0 for item in request.place_ids
+    ):
+        raise HTTPException(status_code=422, detail="景点ID必须为不重复的正整数")
+    if len(set(request.locked_place_ids)) != len(request.locked_place_ids) or any(
+        type(item) is not int or item <= 0 for item in request.locked_place_ids
+    ) or not set(request.locked_place_ids).issubset(request.place_ids):
+        raise HTTPException(status_code=422, detail="锁定景点只能是当前已选景点")
+    if (int(request.start_time[:2]) * 60 + int(request.start_time[3:]) +
+            request.budget_hours * 60 > 1440):
+        raise HTTPException(status_code=422, detail="单日行程时间预算不能跨越午夜")
+
+    try:
+        current = await asyncio.to_thread(fetch_selected_features, request.place_ids)
+        # Candidate IDs/names/categories are re-fetched from PostGIS, not LLM.
+        candidates = await asyncio.to_thread(query_pois, {
+            "categories": [], "avoid_categories": [], "nearby": False,
+            "radius_m": None,
+        })
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    names = [item["properties"]["name"] for item in current]
+    operations, mode = await parse_chat_edit(
+        request.message, names, [h.model_dump() for h in request.history]
+    )
+    try:
+        preview = propose_edit(
+            operations, request.place_ids, request.locked_place_ids,
+            request.transport_mode, request.budget_hours, request.start_time,
+            current, candidates,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    preview["base_state"] = {
+        "place_ids": request.place_ids,
+        "locked_place_ids": request.locked_place_ids,
+        "transport_mode": request.transport_mode,
+        "budget_hours": request.budget_hours,
+        "start_time": request.start_time,
+    }
+    preview["mode"] = mode
+    preview["reply"] = "已找到可执行修改，请核对预览并手动确认；确认前地图与原路线不会改变。"
+    return preview
