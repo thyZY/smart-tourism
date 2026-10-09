@@ -937,6 +937,7 @@ onUnmounted(() => {
       <div v-show="leftView === 'ai'" id="ai-workspace" class="ai-workspace"
         role="tabpanel" aria-labelledby="ai-tab">
         <NaturalSearchPanel :map-ready="mapReady" :center="naturalSearchCenter"
+          :current-route-ids="selectedRoutePlaces.map(place => place.properties.id)"
           @results="applyNaturalResults" @route="applyItineraryPreview" @planned="applyAiPlan" />
       </div>
     </section>
