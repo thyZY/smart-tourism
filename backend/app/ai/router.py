@@ -2,6 +2,9 @@
 
 The DeepSeek model cannot write SQL, choose unverified places, or invent routes.
 """
+import asyncio
+from urllib.error import HTTPError, URLError
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -9,6 +12,9 @@ from ..db import get_db_connection
 from ..itinerary import build_preview
 from ..natural_language import parse_intent
 from .tourism_agent import parse_tourism_intent
+from .itinerary_planner import (
+    build_personalized_itinerary, choose_candidates, resolve_travel_mode,
+)
 
 router = APIRouter(prefix="/api/ai", tags=["ai-tourism"])
 
@@ -113,3 +119,76 @@ async def tourism_search(request: TourismSearchRequest):
         "candidate_count": len(features),
         "itinerary_preview": preview,
     }
+
+
+class PersonalizedItineraryRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=300)
+    lng: float = Field(ge=-180, le=180)
+    lat: float = Field(ge=-90, le=90)
+    max_stops: int = Field(default=4, ge=3, le=6)
+    budget_hours: int = Field(default=8, ge=3, le=12)
+    start_time: str = Field(default="09:00", pattern=r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
+    transport_mode: str | None = None
+
+
+@router.post("/itinerary")
+async def personalized_itinerary(request: PersonalizedItineraryRequest):
+    """One-day AI-supported itinerary grounded in real PostGIS and Valhalla.
+
+    A model only contributes validated intent. Never generate tourist POIs,
+    fabricate missing travel costs or assert opening hours.
+    """
+    query = request.query.strip()
+    if not query:
+        raise HTTPException(status_code=422, detail="请填写旅游需求")
+    try:
+        validated_intent = parse_intent(query)
+        mode_override = request.transport_mode
+        if mode_override is not None and mode_override not in ("pedestrian", "bicycle", "auto"):
+            raise HTTPException(status_code=422, detail="交通方式仅支持步行、骑行或驾车")
+        intent, ai_mode = await parse_tourism_intent(query)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if intent.get("duration_days") is not None and intent["duration_days"] != 1:
+        raise HTTPException(status_code=422, detail="当前仅支持单日行程，请输入一天的旅游需求")
+
+    origin = (request.lng, request.lat)
+    mode = resolve_travel_mode(query, intent, mode_override)
+    if intent["nearby"] and intent["radius_m"] is None:
+        raise HTTPException(status_code=422, detail="缺少附近搜索半径")
+    features = await asyncio.to_thread(query_pois, intent, origin)
+    try:
+        # Early validation before entering the public routing service.
+        await asyncio.to_thread(
+            choose_candidates, features, origin, request.max_stops, request.budget_hours * 60
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:
+        plan = await asyncio.to_thread(
+            build_personalized_itinerary, features, origin, intent,
+            mode, request.max_stops, request.budget_hours, request.start_time,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="景点资料已发生变化，请重新搜索") from exc
+    except (HTTPError, URLError, OSError, TimeoutError, ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="道路时间矩阵或实际路段暂不可用，无法生成可信的AI行程；请稍后重试",
+        ) from exc
+
+    limitations = plan["limitations"] + list(validated_intent.unsupported)
+    if any(word in query for word in ("公交", "地铁", "公共交通")):
+        limitations.append("公交与地铁时间尚未接入，当前只使用步行、骑行或驾车道路模型")
+    if intent.get("walking_level") == "low":
+        limitations.append("即使选择驾车也不代表景区内无需步行")
+    plan["limitations"] = list(dict.fromkeys(limitations))
+    plan["ai_mode"] = ai_mode
+    plan["intent"] = intent
+    plan["explanation"] = (
+        "DeepSeek解析旅游偏好，PostGIS选择已入库景点，Valhalla计算道路行程"
+        if ai_mode == "deepseek" else
+        "采用本地规则解析旅游偏好，PostGIS与Valhalla提供实际景点及道路数据"
+    )
+    return plan
