@@ -32,7 +32,8 @@ ORDINAL = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6}
 MODEL_SYSTEM = (
     "你是南京智慧文旅项目的行程编辑意图解析器。只能输出合法 JSON 对象，"
     '格式为 {"operations":[{"action":"replace|remove|lock|unlock|mode|budget|start",'
-    '"index":2,"name":null,"category":"自然景区","mode":null,"hours":null,"time":null}]}。'
+    '"index":2,"name":null,"category":"自然景区","replacement_name":null,'
+    '"mode":null,"hours":null,"time":null}]}。'
     "index 是当前路线从1开始的站点位置，name 是当前已选景点的准确名称；"
     "对于 replace，可选择category作为目标类别；必须来自："
     + "、".join(sorted(CATEGORIES)) + "。"
@@ -61,20 +62,28 @@ def _category_from_text(text):
     return None
 
 
-def rule_operations(message, names):
+def rule_operations(message, names, candidate_names=()):
     """Deterministic conservative fallback; no imaginary POI names."""
     operations = []
     segments = [s.strip() for s in re.split(r"[，,。；;]|但是|并且|然后|同时", message) if s.strip()]
     for seg in segments:
         idx = _index(seg)
-        name = _named_target(seg, names)
+        replacement_split = re.split(r"替换成|替换为|换成|换为|改成|改为", seg, maxsplit=1)
+        source_text = replacement_split[0] if len(replacement_split) > 1 else seg
+        name = _named_target(source_text, names)
+        replacement_name = (
+            _named_target(replacement_split[1], candidate_names)
+            if len(replacement_split) > 1 else None
+        )
         if any(term in seg for term in ("替换", "换成", "换为", "改成", "改为")) and any(
             w in seg for w in ("景点", "站", "替换", "换成", "换为")
         ):
             category = _category_from_text(seg)
             if idx is not None or name is not None:
                 operations.append({"action": "replace", "index": idx,
-                                   "name": name, "category": category})
+                                   "name": name,
+                                   "category": None if replacement_name else category,
+                                   "replacement_name": replacement_name})
                 continue
         if any(term in seg for term in ("锁定", "必须保留", "一定要去", "不能删除", "保留")):
             if idx is not None or name is not None:
@@ -104,9 +113,9 @@ def rule_operations(message, names):
     return operations[:4]
 
 
-async def parse_chat_edit(message, names, history=(), client=None):
+async def parse_chat_edit(message, names, history=(), client=None, candidate_names=()):
     """Bounded DeepSeek JSON, with documented rule-based fallback."""
-    fallback = rule_operations(message, names)
+    fallback = rule_operations(message, names, candidate_names)
     client = client or DeepSeekClient()
     if not client.enabled:
         return fallback, "rule_based"
@@ -128,6 +137,9 @@ async def parse_chat_edit(message, names, history=(), client=None):
             raise ValueError("Unknown operation")
         # Explicit deterministic intent wins over contradictory model actions.
         if fallback and (any(op["action"] not in {x["action"] for x in fallback} for op in ops)):
+            return fallback, "rule_based_fallback"
+        if any(op.get("replacement_name") for op in fallback):
+            # Exact POI names in the user's own wording outrank a model guess.
             return fallback, "rule_based_fallback"
         return ops, "deepseek"
     except Exception:
