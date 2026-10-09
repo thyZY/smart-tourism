@@ -64,6 +64,10 @@ assert.equal(requests.length, 0, 'no query before map load')
 load()
 assert.equal(map.sources.places.data.type, 'FeatureCollection', 'places source is created before initial request')
 assert.equal(map.sources['route-line'].data.type, 'FeatureCollection', 'route source is created before initial request')
+assert.equal(map.sources['routing-access-points'].data.features.length, 0,
+  'reviewed scenic entrances start empty; no fabricated markers')
+assert.equal(map.layers['routing-access-points'].paint['circle-color'], '#7c3aed',
+  'reviewed entrances have distinct purple markers')
 assert.equal(api.loading.value, true)
 assert.equal(api.mapDisplayMode.value, 'points', 'points are the default display mode')
 assert.equal(map.layers['places-points'].source, 'places')
@@ -379,6 +383,14 @@ const aiRecommendations = {
   itinerary: {
     mode: 'auto',
     optimized_order_ids: [1, 3, 2],
+    routing_points: [
+      { id: 1, name: '南京博物院', kind: 'reviewed_access_point',
+        lon: 118.7924, lat: 32.0409, access_name: '测试入口' },
+      { id: 3, name: '中华门瓮城', kind: 'poi_coordinate_fallback',
+        lon: 118.7800, lat: 32.0200 },
+      { id: 2, name: '夫子庙', kind: 'poi_coordinate_fallback',
+        lon: 118.7877, lat: 32.0270 },
+    ],
     geometry: autoRouteGeometry,
     distance_km: 3.12,
     duration_minutes: 8.4
@@ -395,6 +407,11 @@ assert.equal(api.roadMode.value, 'auto', 'AI-selected travel mode is applied to 
 assert.equal(api.multiRoute.value.distance_km, 3.12)
 assert.equal(api.multiResults.value.auto.duration_minutes, 8.4)
 assert.equal(map.sources['road-route'].data.features.length, 2, 'AI planner paints verified road legs')
+assert.equal(map.sources['routing-access-points'].data.features.length, 1,
+  'only reviewed entrance appears; unverified fallback is not mislabelled')
+assert.deepEqual(
+  JSON.parse(JSON.stringify(map.sources['routing-access-points'].data.features[0].geometry.coordinates)),
+  [118.7924, 32.0409], 'purple marker displays the reviewed access coordinate')
 assert.equal(map.paintProperties.at(-1).value, '#2563eb', 'AI-generated driving road is blue')
 assert.equal(map.layoutProperties.at(-1).value, 'none', 'AI itinerary hides direct line')
 const beforeInvalidPlan = api.multiRoute.value
@@ -403,6 +420,8 @@ api.applyAiPlan({ selected_places: aiRecommendations.selected_places,
 assert.equal(api.multiRoute.value, beforeInvalidPlan, 'untrusted POI ids cannot overwrite current route')
 api.toggleRoutePlace(historicalSite)
 assert.equal(api.multiRoute.value, null, 'manual route edit invalidates old AI road geometry')
+assert.equal(map.sources['routing-access-points'].data.features.length, 0,
+  'manual route edit clears stale reviewed-entrance markers')
 assert.equal(api.selectedRoutePlaces.value.length, 2)
 
 api.toggleRoutePlace(museum)
