@@ -1,0 +1,70 @@
+{
+  "dataset_id": "nanjing_xuanwu_lake_entrance_research_2026-10-10",
+  "poi_name": "玄武湖公园",
+  "survey_date": "2026-10-10",
+  "dataset_status": "draft_requires_manual_spatial_review",
+  "coordinate_policy": "Raw Amap coordinates below are GCJ-02-style platform coordinates, NOT WGS84. NEVER insert them as lng/lat into reviewed routing_access. Wikidata city-gate coordinate is NOT independently established as a passable park entrance.",
+  "candidates": [
+    {
+      "candidate_id": "xuanwumen_west",
+      "name": "玄武湖景区（玄武门）",
+      "travel_modes_under_review": ["pedestrian"],
+      "status": "draft",
+      "entrance_existence": "supported_by_park_and_map_pages",
+      "raw_platform_position": {
+        "provider": "amap",
+        "latitude": 32.070519,
+        "longitude": 118.787506,
+        "coordinate_system": "GCJ-02_platform_coordinates_do_not_use_as_WGS84",
+        "source_url": "https://www.amap.com/place/B00190B4FQ"
+      },
+      "independent_landmark_reference": {
+        "name": "南京城墙玄武门（文物门址；不一定是公园通行点）",
+        "longitude_wgs84_reference": 118.782338889,
+        "latitude_wgs84_reference": 32.072619444,
+        "source_url": "https://www.wikidata.org/wiki/Q17059567",
+        "warning": "Wikidata identifies a Nanjing city gate and has no coordinates citations. Do not adopt as an entrance without OSM/onsite access-way cross-check."
+      },
+      "park_page_url": "https://www.xuanwuhu.net/lyfw/lyfw2.aspx",
+      "remaining_checks": [
+        "Compare an actual entrance or barrier node against OSM routable footways",
+        "Cross-check GCJ-02 to WGS84 conversion against an independent WGS84 map",
+        "Confirm chosen point is reachable on the walking network, not merely a wall landmark",
+        "Confirm on-site opening and access arrangements"
+      ]
+    },
+    {
+      "candidate_id": "jiefangmen_south",
+      "name": "玄武湖景区（解放门）",
+      "travel_modes_under_review": ["pedestrian"],
+      "status": "draft",
+      "entrance_existence": "supported_by_park_and_map_pages",
+      "raw_platform_position": {
+        "provider": "amap",
+        "latitude": 32.062228,
+        "longitude": 118.796638,
+        "coordinate_system": "GCJ-02_platform_coordinates_do_not_use_as_WGS84",
+        "source_url": "https://ditu.amap.com/place/B0019095PK"
+      },
+      "independent_landmark_reference": null,
+      "park_page_url": "https://www.xuanwuhu.net/lyfw/detail.aspx?id=207",
+      "remaining_checks": [
+        "Find an independent WGS84 OSM entrance/gate or crossing node",
+        "Verify GCJ-02 / WGS84 alignment of the park pedestrian entrance",
+        "Separate the park entrance from the nearby Nanjing city wall ticket location",
+        "Confirm actual pedestrian route across the gate"
+      ]
+    }
+  ],
+  "motor_vehicle_policy": {
+    "auto_entry": null,
+    "status": "not_proven",
+    "sources": [
+      "https://www.nanjing.gov.cn/zdgk/201712/t20171229_1057120.html",
+      "https://www.xwzf.gov.cn/ztzl/yshjgzzl/gzdt_69308/202411/t20241127_5019911.html"
+    ],
+    "reason": "City rules strictly restrict scenic-area motor vehicle access. A parking or drop-off point must be separately verified as a motor-vehicle-reachable point; a pedestrian gate is not an auto routing point."
+  },
+  "license_note": "Only lightweight factual metadata and deep links stored. See each publisher's current usage/attribution terms. No source maps reproduced.",
+  "routing_activation": "none; this research file does not change PostGIS or Valhalla routing"
+}
