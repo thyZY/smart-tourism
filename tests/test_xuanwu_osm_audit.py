@@ -121,6 +121,19 @@ class XuanwuOSMAuditTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 audit.gcj02_to_wgs84(lng, lat)
 
+    def test_manual_overpass_turbo_queries_work_without_network(self):
+        from contextlib import redirect_stdout
+        from io import StringIO
+        output = StringIO()
+        with redirect_stdout(output):
+            result = audit.main(["--queries-only"])
+        self.assertEqual(result, 0)
+        text = output.getvalue()
+        self.assertIn("玄武湖景区（玄武门）", text)
+        self.assertIn("玄武湖景区（解放门）", text)
+        self.assertEqual(text.count("[out:json]"), 2)
+        self.assertIn("https://overpass-turbo.eu/", text)
+
     def test_no_implicit_network_or_database_side_effect(self):
         with self.assertRaises(ValueError):
             audit.audit(EVIDENCE)
