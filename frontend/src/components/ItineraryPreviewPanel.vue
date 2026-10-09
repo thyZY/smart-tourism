@@ -62,15 +62,27 @@ const preview = async () => {
 </template>
 
 <style scoped>
-.preview-panel{position:absolute;bottom:178px;left:20px;z-index:10;width:min(360px,calc(100vw - 40px));box-sizing:border-box;background:white;color:#222;border:1px solid #ddd;border-radius:10px;box-shadow:0 3px 12px #0002}
-summary{cursor:pointer;padding:12px 14px;font-weight:600;font-size:14px}
-details>p,ol,form{margin:8px 14px;font-size:12px;line-height:1.6}
-form{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
-input{min-width:140px;flex:1;padding:7px;border:1px solid #ccc;border-radius:5px}
-select{padding:6px}
-button{padding:7px 10px;background:#2563eb;border:0;border-radius:6px;color:white;cursor:pointer}
-button:disabled{opacity:.5}
-ol{max-height:110px;overflow:auto;padding-left:28px}
-.notice{color:#64748b}
-.error{color:#b42318}
+.preview-panel {
+  position: relative;
+  width: 100%;
+  max-height: min(36vh, 270px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  border: 1px solid #dbe4ee;
+  border-radius: 12px;
+  background: #fff;
+  color: #26374b;
+  box-shadow: 0 3px 14px #12253e1c;
+  text-align: left;
+}
+summary { cursor: pointer; padding: 12px 14px; font-size: 13px; font-weight: 700; }
+details > p, ol, form { margin: 8px 13px; font-size: 12px; line-height: 1.55; }
+form { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+input { flex: 1; min-width: 130px; padding: 7px; border: 1px solid #cbd5e1; border-radius: 6px; }
+select { padding: 6px; border: 1px solid #cbd5e1; border-radius: 6px; }
+button { padding: 7px 9px; background: #2563eb; border: 0; border-radius: 7px; color: white; cursor: pointer; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+ol { max-height: 100px; overflow: auto; padding-left: 25px; }
+.notice { color: #64748b; }
+.error { color: #b42318; }
 </style>
