@@ -154,7 +154,10 @@ const showPreview = () => {
 .natural-search {
   position: relative;
   width: 100%;
-  max-height: min(35vh, 290px);
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  max-height: none;
   overflow-y: auto;
   box-sizing: border-box;
   padding: 13px;
@@ -165,7 +168,7 @@ const showPreview = () => {
   box-shadow: 0 4px 16px #12253e26;
   text-align: left;
 }
-.natural-search.has-plan { max-height: min(49vh, 470px); }
+.natural-search.has-plan { max-height: none; }
 h2 { margin: 0; font-size: 15px; color: #1c3047; }
 h2 small { font-size: 10px; font-weight: 400; color: #738399; }
 p { margin: 6px 0; font-size: 12px; color: #687a8d; line-height: 1.45; }
