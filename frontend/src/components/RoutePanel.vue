@@ -5,17 +5,25 @@ const transportModes = [
   { value: 'auto', label: '🚗 驾车' }
 ]
 
-defineProps({
+const props = defineProps({
   places: { type: Array, required: true },
   distanceKm: { type: Number, required: true },
   roadRoute: { type: Object, default: null },
   roadPending: { type: Boolean, default: false },
   roadError: { type: String, default: '' },
   roadMode: { type: String, default: 'pedestrian' },
-  roadResults: { type: Object, default: () => ({}) }
+  roadResults: { type: Object, default: () => ({}) },
+  multiRoute: { type: Object, default: null },
+  multiPending: { type: Boolean, default: false },
+  multiError: { type: String, default: '' },
+  multiResults: { type: Object, default: () => ({}) }
 })
 
-defineEmits(['clear', 'calculate-road', 'change-mode'])
+defineEmits(['clear', 'calculate-road', 'calculate-multi', 'change-mode'])
+
+const resultFor = mode => props.places.length === 2
+  ? props.roadResults[mode]?.properties
+  : props.multiResults[mode]
 </script>
 
 <template>
@@ -30,45 +38,69 @@ defineEmits(['clear', 'calculate-road', 'change-mode'])
     <ol v-if="places.length" class="route-places">
       <li v-for="place in places" :key="place.properties.id">{{ place.properties.name }}</li>
     </ol>
-    <p class="route-distance">直线距离：{{ distanceKm.toFixed(2) }} km</p>
+    <p class="route-distance">原选定顺序直线距离：{{ distanceKm.toFixed(2) }} km</p>
 
-    <template v-if="places.length === 2">
+    <template v-if="places.length >= 2 && places.length <= 6">
       <p class="transport-label">选择交通方式</p>
       <div class="transport-modes" role="group" aria-label="选择交通方式">
-        <button
-          v-for="mode in transportModes"
-          :key="mode.value"
-          type="button"
-          :class="{ selected: roadMode === mode.value }"
+        <button v-for="mode in transportModes" :key="mode.value"
+          type="button" :class="{ selected: roadMode === mode.value }"
           :aria-pressed="roadMode === mode.value"
-          @click="$emit('change-mode', mode.value)"
-        >{{ mode.label }}</button>
+          @click="$emit('change-mode', mode.value)">{{ mode.label }}</button>
       </div>
-      <button class="road-button" type="button" :disabled="roadPending" @click="$emit('calculate-road')">
+
+      <button v-if="places.length === 2" class="road-button" type="button"
+        :disabled="roadPending" @click="$emit('calculate-road')">
         {{ roadPending ? '正在计算道路路线…' : roadResults[roadMode] ? '重新计算当前路线' : '计算当前交通方式路线' }}
       </button>
+      <button v-else class="road-button" type="button"
+        :disabled="multiPending" @click="$emit('calculate-multi')">
+        {{ multiPending ? '正在计算道路时间矩阵…'
+          : multiResults[roadMode] ? '重新优化当前交通方式' : '按道路时间优化多站顺序' }}
+      </button>
 
-      <template v-if="roadRoute">
+      <template v-if="places.length === 2 && roadRoute">
         <p class="road-result">道路距离：{{ roadRoute.distance_km.toFixed(3) }} km</p>
         <p class="road-result">预计用时：{{ roadRoute.duration_minutes.toFixed(1) }} 分钟</p>
-        <p class="road-notice">彩色折线是基于 OpenStreetMap 的路网估算；非实时交通导航，可能存在起终点吸附偏移。</p>
+        <p class="road-notice">彩色折线为 OSM 路网估算，可能存在起终点吸附偏移。</p>
       </template>
-      <p v-if="roadError" class="road-error" role="alert">{{ roadError }}</p>
+      <p v-if="places.length === 2 && roadError" class="road-error" role="alert">{{ roadError }}</p>
+
+      <template v-if="places.length >= 3 && multiRoute">
+        <p class="road-result">优化后道路总距离：{{ multiRoute.distance_km.toFixed(2) }} km</p>
+        <p class="road-result">交通时间：{{ multiRoute.duration_minutes.toFixed(1) }} 分钟</p>
+        <p class="road-notice">矩阵估算节省：{{ multiRoute.travel_minutes_saved_estimate.toFixed(1) }} 分钟（首站固定）</p>
+        <h3 class="multi-heading">优化后游览顺序</h3>
+        <ol class="multi-stops">
+          <li v-for="stop in multiRoute.ordered_stops" :key="stop.id">
+            {{ stop.name }}
+            <small> · {{ stop.visit_duration == null ? '游览时长未知' : '建议停留约' + stop.visit_duration + '分钟' }}</small>
+          </li>
+        </ol>
+        <p v-if="multiRoute.total_plan_minutes != null" class="road-result">
+          含停留的总估算：{{ multiRoute.total_plan_minutes.toFixed(1) }} 分钟
+        </p>
+        <p v-else class="road-notice">
+          {{ multiRoute.missing_visit_duration_count }}个景点缺少停留时间，暂不计算完整行程总用时。
+        </p>
+        <p class="road-notice">只优化已选站点的路网交通时间，不含开放时间、停车、休息或实时路况。</p>
+      </template>
+      <p v-if="places.length >= 3 && multiError" class="road-error" role="alert">{{ multiError }}</p>
 
       <table class="mode-comparison" aria-label="已计算交通方式比较">
         <thead><tr><th>交通方式</th><th>道路距离</th><th>预计时间</th></tr></thead>
         <tbody>
           <tr v-for="mode in transportModes" :key="mode.value" :class="{ active: roadMode === mode.value }">
             <td>{{ mode.label }}</td>
-            <td>{{ roadResults[mode.value] ? roadResults[mode.value].properties.distance_km.toFixed(2) + ' km' : '待计算' }}</td>
-            <td>{{ roadResults[mode.value] ? roadResults[mode.value].properties.duration_minutes.toFixed(1) + ' 分' : '—' }}</td>
+            <td>{{ resultFor(mode.value) ? resultFor(mode.value).distance_km.toFixed(2) + ' km' : '待计算' }}</td>
+            <td>{{ resultFor(mode.value) ? resultFor(mode.value).duration_minutes.toFixed(1) + ' 分' : '—' }}</td>
           </tr>
         </tbody>
       </table>
-      <p class="road-notice">分别选择步行、骑行、驾车并计算，才能获得三种方式的比较结果。无需 DeepSeek Key。</p>
+      <p class="road-notice">不同交通方式需分别计算；表格仅展示实际返回结果，无需 DeepSeek Key。</p>
     </template>
-    <p v-else-if="places.length > 2" class="road-notice">
-      当前道路寻路仅支持两个景点；多站路线仍为直线预览。
+    <p v-else-if="places.length > 6" class="road-notice">
+      最多支持6个景点，请移除多余景点后再优化。
     </p>
   </aside>
 </template>
@@ -119,4 +151,7 @@ h2 { font-size: 18px; }
 .mode-comparison th, .mode-comparison td { border-bottom: 1px solid #e2e8f0; padding: 7px 2px; }
 .mode-comparison th { color: #64748b; font-weight: 500; }
 .mode-comparison .active { background: #eff6ff; }
+.multi-heading { font-size: 13px; margin: 12px 0 5px; color: #1d4ed8; }
+.multi-stops { margin: 6px 0 4px; padding-left: 22px; max-height: 170px; overflow-y: auto; font-size: 13px; line-height: 1.7; }
+.multi-stops small { color: #64748b; font-size: 11px; }
 </style>
