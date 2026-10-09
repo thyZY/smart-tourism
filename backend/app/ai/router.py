@@ -6,6 +6,7 @@ import asyncio
 from urllib.error import HTTPError, URLError
 
 from fastapi import APIRouter, HTTPException
+from typing import Literal
 from pydantic import BaseModel, Field
 
 from ..db import get_db_connection
@@ -196,3 +197,50 @@ async def personalized_itinerary(request: PersonalizedItineraryRequest):
         "采用本地规则解析旅游偏好，PostGIS与Valhalla提供实际景点及道路数据"
     )
     return plan
+
+
+class EditItineraryRequest(BaseModel):
+    """All place IDs are re-fetched from PostGIS, never trusted as POI facts."""
+    place_ids: list[int] = Field(min_length=3, max_length=6)
+    locked_place_ids: list[int] = Field(default_factory=list, max_length=6)
+    transport_mode: Literal["pedestrian", "bicycle", "auto"] = "pedestrian"
+    budget_hours: int = Field(default=8, ge=3, le=12)
+    start_time: str = Field(default="09:00", pattern=r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
+    auto_trim: bool = True
+
+
+@router.post("/itinerary/replan")
+async def edited_itinerary(request: EditItineraryRequest):
+    """Recompute a user-edited single-day itinerary. Does not call DeepSeek."""
+    from .itinerary_editor import BudgetConflict, replan_edited_itinerary
+
+    if any(type(ident) is not int or ident <= 0 for ident in request.place_ids):
+        raise HTTPException(status_code=422, detail="景点ID必须为正整数")
+    if len(set(request.place_ids)) != len(request.place_ids):
+        raise HTTPException(status_code=422, detail="行程不能包含重复景点")
+    if any(type(ident) is not int or ident <= 0 for ident in request.locked_place_ids):
+        raise HTTPException(status_code=422, detail="锁定景点ID必须为正整数")
+    if not set(request.locked_place_ids).issubset(request.place_ids):
+        raise HTTPException(status_code=422, detail="锁定景点必须在当前行程中")
+    departure = int(request.start_time[:2]) * 60 + int(request.start_time[3:])
+    if departure + request.budget_hours * 60 > 1440:
+        raise HTTPException(status_code=422, detail="单日行程时间预算不能跨越午夜")
+
+    try:
+        return await asyncio.to_thread(
+            replan_edited_itinerary,
+            request.place_ids, request.locked_place_ids,
+            request.transport_mode, request.budget_hours,
+            request.start_time, request.auto_trim,
+        )
+    except BudgetConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (HTTPError, URLError, OSError, TimeoutError, KeyError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="道路时间矩阵或分段路线不可用，无法可靠地重新规划",
+        ) from exc
