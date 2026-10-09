@@ -570,14 +570,16 @@ const applyAiPlan = (plan) => {
       !Object.prototype.hasOwnProperty.call(roadModeColors, result.mode) ||
       result.geometry?.type !== 'FeatureCollection' ||
       result.geometry.features?.length !== ids.length - 1) return
-  const byId = new Map(places.map(place => [place.properties?.id, place]))
-  if (byId.size !== ids.length || ids.some(id => !byId.has(id))) return
+  // Map is the imported MapLibre class, not the native JavaScript Map.
+  const byId = Object.fromEntries(places.map(place => [place.properties?.id, place]))
+  if (Object.keys(byId).length !== ids.length ||
+      ids.some(id => !Object.prototype.hasOwnProperty.call(byId, id))) return
 
   exitThemeMode()
   showFavoritesOnly.value = false
   clearPopup()
   closePlaceDetail()
-  const ordered = ids.map(id => byId.get(id))
+  const ordered = ids.map(id => byId[id])
   searchResults.value = ordered
   map.getSource('places')?.setData({ type: 'FeatureCollection', features: ordered })
   roadMode.value = result.mode
