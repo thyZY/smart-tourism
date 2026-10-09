@@ -1069,6 +1069,9 @@ body { overflow: hidden; }
     top: var(--workspace-top);
     bottom: calc(43vh + 24px);
     width: var(--rail-width);
+    overflow-y: auto;
+    pointer-events: auto;
+    scrollbar-width: thin;
   }
   .right-workspace {
     top: auto;
