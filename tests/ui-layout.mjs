@@ -51,6 +51,13 @@ assert(
 assert(rootTemplate.indexOf('<ItineraryPreviewPanel') < rootTemplate.indexOf('<NaturalSearchPanel'))
 assert(rootTemplate.includes('@change-mode="selectRoadMode"'), 'transport mode switching remains wired')
 assert(rootTemplate.includes('@calculate-road="calculateRoadRoute"'), 'Valhalla requests remain wired')
+assert(app.includes("map.addSource('routing-access-points'"), 'reviewed entrance points share the map canvas')
+assert(app.includes("setRoutingMarkers(result.routing_points)"), 'road route results show reviewed entrance positions')
+assert(app.includes("getSource('routing-access-points')?.setData(emptyPlaces())"),
+       'outdated entrance markers are cleared when routes are edited')
+assert(route.includes('reviewedEntranceCount'), 'route rail shows reviewed entrance coverage')
+assert(route.includes('poi_coordinate_fallback'), 'route rail discloses unreviewed POI coordinate fallback')
+
 assert(rootTemplate.includes('@planned="applyAiPlan"'), 'AI itinerary reaches the map renderer')
 assert(ai.includes("'/api/ai/itinerary'") || ai.includes("127.0.0.1:8010/api/ai/itinerary"),
        'AI panel has the personalized route endpoint')
