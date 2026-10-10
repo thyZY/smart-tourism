@@ -182,6 +182,44 @@ def _explicit_gate(tags):
     )
 
 
+def _segment_distance_m(point, start, end):
+    """Local planar projection is accurate enough to rank <=350 m segments.
+
+    Returns distance to the full line segment and its closest WGS84 point,
+    NOT merely the distance to the closest constituent OSM node.
+    """
+    metres_per_lat = 111_320.0
+    metres_per_lon = metres_per_lat * math.cos(math.radians(point[1]))
+    ax = (start[0] - point[0]) * metres_per_lon
+    ay = (start[1] - point[1]) * metres_per_lat
+    bx = (end[0] - point[0]) * metres_per_lon
+    by = (end[1] - point[1]) * metres_per_lat
+    denom = (bx - ax) ** 2 + (by - ay) ** 2
+    t = max(0.0, min(1.0, -(ax * (bx - ax) + ay * (by - ay)) / denom)) if denom else 0.0
+    x = ax + t * (bx - ax)
+    y = ay + t * (by - ay)
+    return math.hypot(x, y), (start[0] + t * (end[0] - start[0]),
+                              start[1] + t * (end[1] - start[1]))
+
+
+def _nearest_walkable_segments(point, segments, limit=5):
+    nearby = []
+    for segment in segments:
+        distance, projected = _segment_distance_m(
+            point, segment["start"], segment["end"])
+        nearby.append({
+            "osm_way_id": segment["osm_way_id"],
+            "osm_way_url": f"https://www.openstreetmap.org/way/{segment['osm_way_id']}",
+            "segment_start_node_id": segment["start_id"],
+            "segment_end_node_id": segment["end_id"],
+            "distance_m": round(distance, 1),
+            "closest_wgs84_point": {"lng": round(projected[0], 8),
+                                    "lat": round(projected[1], 8)},
+        })
+    return sorted(nearby, key=lambda x: (
+        x["distance_m"], x["osm_way_id"], x["segment_start_node_id"]))[:limit]
+
+
 def inspect_osm(payload, lng, lat, radius=180):
     """Rank OSM gate nodes with actual footpath-node-membership evidence."""
     nodes = {}
@@ -196,8 +234,17 @@ def inspect_osm(payload, lng, lat, radius=180):
             ways.append(entry)
     footways_at_node = {}
     pedestrian_nodes = []
+    walkable_segments = []
     for way in ways:
-        for node_id in way.get("nodes") or []:
+        ids = way.get("nodes") or []
+        for a_id, b_id in zip(ids, ids[1:]):
+            if a_id in nodes and b_id in nodes:
+                a, b = nodes[a_id], nodes[b_id]
+                walkable_segments.append({
+                    "osm_way_id": way["id"], "start_id": a_id, "end_id": b_id,
+                    "start": (a["lon"], a["lat"]), "end": (b["lon"], b["lat"]),
+                })
+        for node_id in ids:
             footways_at_node.setdefault(node_id, []).append(way["id"])
             if node_id in nodes:
                 n = nodes[node_id]
@@ -212,6 +259,7 @@ def inspect_osm(payload, lng, lat, radius=180):
         if metres > radius:
             continue
         direct_ways = sorted(set(footways_at_node.get(node["id"], [])))
+        nearest_segments = _nearest_walkable_segments(point, walkable_segments)
         nearest_way_node_m = min(
             (distance_m(point, xy) for xy in pedestrian_nodes), default=None)
         blocked = (
@@ -231,6 +279,13 @@ def inspect_osm(payload, lng, lat, radius=180):
             "nearest_walkable_way_node_m": (
                 round(nearest_way_node_m, 1)
                 if nearest_way_node_m is not None else None),
+            "nearest_walkable_way_segment_m": (
+                nearest_segments[0]["distance_m"] if nearest_segments else None
+            ),
+            "nearest_walkable_way_segment_ids": (
+                [nearest_segments[0]["osm_way_id"]] if nearest_segments else []
+            ),
+            "nearby_walkable_way_segments": nearest_segments,
             "tagged_pedestrian_access_restricted": blocked,
             "status": "candidate_requires_manual_review",
             "not_automatically_approved": True,
@@ -245,6 +300,9 @@ def inspect_osm(payload, lng, lat, radius=180):
     return {
         "candidate_count": len(candidates),
         "walkable_way_count": len(ways),
+        "walkable_way_segment_count": len(walkable_segments),
+        "nearest_walkable_segments_to_converted_marker": _nearest_walkable_segments(
+            (lng, lat), walkable_segments),
         "gate_nodes": candidates[:30],
         "review_warning": (
             "An OSM gate node sharing a walkable way is not independent proof "
@@ -255,7 +313,7 @@ def inspect_osm(payload, lng, lat, radius=180):
 
 
 def audit(evidence, snapshots=None, online=False, radius=180, endpoint=OSM_ENDPOINT,
-          osm_api=False):
+          osm_api=False, raw_snapshot_dir=None):
     if not online and snapshots is None and not osm_api:
         raise ValueError("Specify --online, --osm-api or --osm-json-dir; no implicit network access")
     result = {
@@ -282,6 +340,13 @@ def audit(evidence, snapshots=None, online=False, radius=180, endpoint=OSM_ENDPO
         else:
             filename = Path(snapshots) / (candidate["candidate_id"] + ".json")
             osm = json.loads(filename.read_text(encoding="utf-8"))
+        if raw_snapshot_dir is not None:
+            folder = Path(raw_snapshot_dir)
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / (candidate["candidate_id"] + ".json")).write_text(
+                json.dumps(osm, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
         matched = inspect_osm(osm, lng, lat, radius)
         result["entrances"].append({
             "candidate_id": candidate["candidate_id"],
@@ -344,6 +409,8 @@ def main(argv=None):
     parser.add_argument("--radius-m", type=int, default=180)
     parser.add_argument("--endpoint", default=OSM_ENDPOINT)
     parser.add_argument("--out", type=Path, default=OUT)
+    parser.add_argument("--save-osm-snapshots", action="store_true",
+                        help="Save raw OSM JSON locally for independent topology review")
     args = parser.parse_args(argv)
     try:
         evidence = json.loads(EVIDENCE.read_text(encoding="utf-8"))
@@ -361,8 +428,10 @@ def main(argv=None):
             else:
                 print("Paste each query into https://overpass-turbo.eu/ and export JSON.")
             return 0
+        raw_dir = (args.out.parent / "xuanwu_osm_raw_local"
+                   if args.save_osm_snapshots else None)
         report = audit(evidence, args.osm_json_dir, args.online,
-                       args.radius_m, args.endpoint, args.osm_api)
+                       args.radius_m, args.endpoint, args.osm_api, raw_dir)
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(
             json.dumps(report, ensure_ascii=False, indent=2) + "\n",
@@ -376,6 +445,8 @@ def main(argv=None):
                   f"OSM gate candidates={item['osm_result']['candidate_count']}, "
                   f"walkable OSM ways={item['osm_result']['walkable_way_count']}")
         print(f"Review JSON: {args.out}\nReview GeoJSON: {geojson}")
+        if raw_dir is not None:
+            print(f"Raw OSM JSON snapshots (unreviewed): {raw_dir}")
         print("SAFETY: no DB writes, no reviewed entrances, no routing changes.")
     except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as exc:
         print(f"Audit failed; no DB updates made: {exc}", file=sys.stderr)
