@@ -1082,3 +1082,38 @@ git pull --ff-only
 请只分享审计JSON与必要的OSM原始片段；不要在未经地图和通行证据核实之前
 向 `routing_access` 填入 `reviewed` 或把最近道路投影点直接当入口。
 本次代码仅扩展只读分析，不改变已有40个POI、PostGIS或Valhalla参数。
+
+
+## 第十四阶段·原生OSM拓扑复核：玄武门城墙通道与鸡鸣寺出口误判
+
+根据用户上传的完整OSM原生快照和新版审计报告，已确认之前的
+“玄武门0闸门、解放门1入口”的简单计数**不足以识别园区通行位置**。
+详细证据、OSM Way/Node ID、步行拓扑长度见
+`data/entrance_evidence/xuanwu_lake_osm_verified_topology_review_20261010.md`。
+
+**新发现：**
+- 玄武门存在`barrier=sally_port`、
+  `barrier=entrance;foot=yes;bicycle=yes`节点，原脚本未将其
+  纳入闸门类型。城墙sally_port节点和两条service道路共享节点，
+  OSM记录了一条候选穿城墙道路连接，但**未证明游客可通行**。
+- 解放门之前唯一`entrance=yes`节点的`ref=鸡鸣寺出门`，
+  是**鸡鸣寺出口的标签**，不能误用为玄武湖入口。
+- 解放门高德转换标点附近的`2929152731`确实为3条
+  footway共享节点，OSM图与环湖路相连；
+  选择某个环湖路目标节点时，经台阶路线约197.5m、
+  不经台阶的图路线约493.0m。两者都**不是现场已验证导航**。
+
+代码已更新入口类型筛选、保存ref和way成员关系，并补充离线测试。
+本轮不会操作PostGIS，也不会把任何点设为`reviewed`。
+
+若需用原始快照重跑新版审计（无需再次访问OSM网络）：
+
+```powershell
+cd D:\smart-tourism
+git pull --ff-only
+.\.venv\Scripts\python.exe scripts\audit_xuanwu_osm.py --osm-json-dir data\entrance_evidence\xuanwu_osm_raw_local
+```
+
+下一步应在QGIS/OSM底图人工比对：玄武门城墙`sally_port`具体通道、
+解放门真实的街道→园区连通位置、台阶与无障碍条件，
+并核实景区官方通行安排。不能仅因为OSM几何连通就启用导航点。
