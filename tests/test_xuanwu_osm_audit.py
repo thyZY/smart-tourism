@@ -193,6 +193,47 @@ class XuanwuOSMAuditTests(unittest.TestCase):
         self.assertEqual(capture.getvalue().count(
             "https://api.openstreetmap.org/api/0.6/map.json?bbox="), 2)
 
+    def test_nearest_walkable_segment_not_just_way_vertex(self):
+        lng, lat = 118.790473, 32.063818
+        # Artificial gate falls directly on a 90-metre path segment while
+        # both OSM vertices are far away. Endpoints-only analysis is misleading.
+        osm = {"elements": [
+            {"type": "node", "id": 1, "lon": lng, "lat": lat,
+             "tags": {"entrance": "yes"}},
+            {"type": "node", "id": 2, "lon": lng - .0005, "lat": lat},
+            {"type": "node", "id": 3, "lon": lng + .0005, "lat": lat},
+            {"type": "way", "id": 100, "nodes": [2, 3],
+             "tags": {"highway": "footway"}},
+        ]}
+        result = audit.inspect_osm(osm, lng, lat)
+        candidate = result["gate_nodes"][0]
+        self.assertGreater(candidate["nearest_walkable_way_node_m"], 35)
+        self.assertLess(candidate["nearest_walkable_way_segment_m"], 1)
+        self.assertEqual(candidate["nearest_walkable_way_segment_ids"], [100])
+        self.assertFalse(candidate["is_member_of_walkable_osm_way"])
+        self.assertTrue(candidate["not_automatically_approved"])
+        self.assertEqual(result["walkable_way_segment_count"], 1)
+        self.assertLess(
+            result["nearest_walkable_segments_to_converted_marker"][0]["distance_m"], 1)
+
+    def test_local_raw_osm_snapshots_are_saved_without_db_actions(self):
+        with tempfile.TemporaryDirectory() as folder:
+            directory = Path(folder) / "raw"
+            with patch.object(audit, "fetch_osm_map", side_effect=sample_osm):
+                report = audit.audit(EVIDENCE, osm_api=True,
+                                     raw_snapshot_dir=directory)
+            self.assertEqual(report["routing_activation"], "none")
+            self.assertTrue((directory / "xuanwumen_west.json").exists())
+            self.assertTrue((directory / "jiefangmen_south.json").exists())
+            raw = json.loads((directory / "jiefangmen_south.json").read_text(
+                encoding="utf-8"))
+            self.assertIn("elements", raw)
+            self.assertTrue(all(
+                point["status"] == "candidate_requires_manual_review"
+                for item in report["entrances"]
+                for point in item["osm_result"]["gate_nodes"]
+            ))
+
     def test_no_implicit_network_or_database_side_effect(self):
         with self.assertRaises(ValueError):
             audit.audit(EVIDENCE)
