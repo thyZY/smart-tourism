@@ -29,7 +29,10 @@ OSM_API_MAP = "https://api.openstreetmap.org/api/0.6/map.json"
 A = 6378245.0
 EE = 0.00669342162296594323
 PATH_KINDS = frozenset(("footway", "pedestrian", "path", "steps", "living_street"))
-GATE_BARRIERS = frozenset(("gate", "kissing_gate", "stile", "turnstile", "swing_gate"))
+GATE_BARRIERS = frozenset((
+    "gate", "kissing_gate", "stile", "turnstile", "swing_gate",
+    "entrance", "sally_port",
+))
 BANNED_ACCESS = frozenset(("no", "private"))
 
 
@@ -233,6 +236,20 @@ def inspect_osm(payload, lng, lat, radius=180):
         elif entry.get("type") == "way" and _walkable(entry.get("tags") or {}):
             ways.append(entry)
     footways_at_node = {}
+    node_way_memberships = {}
+    for entry in payload.get("elements", []):
+        if entry.get("type") != "way":
+            continue
+        tags = entry.get("tags") or {}
+        if not tags.get("highway"):
+            continue
+        for nid in entry.get("nodes") or []:
+            node_way_memberships.setdefault(nid, []).append({
+                "osm_way_id": entry["id"],
+                "highway": tags.get("highway"),
+                "foot": tags.get("foot"),
+                "access": tags.get("access"),
+            })
     pedestrian_nodes = []
     walkable_segments = []
     for way in ways:
@@ -273,7 +290,12 @@ def inspect_osm(payload, lng, lat, radius=180):
             "distance_to_converted_map_marker_m": round(metres, 1),
             "node_tags": {k: v for k, v in tags.items() if k in (
                 "name", "name:zh", "entrance", "barrier", "access", "foot",
-                "wheelchair", "opening_hours", "operator")},
+                "wheelchair", "opening_hours", "operator", "ref",
+                "bicycle", "motor_vehicle", "vehicle")},
+            "highway_way_memberships": node_way_memberships.get(node["id"], [])[:15],
+            "possible_other_attraction_exit": (
+                bool(tags.get("ref") and "鸡鸣寺" in str(tags["ref"]))
+            ),
             "pedestrian_way_membership_ids": direct_ways[:10],
             "is_member_of_walkable_osm_way": bool(direct_ways),
             "nearest_walkable_way_node_m": (
@@ -292,6 +314,7 @@ def inspect_osm(payload, lng, lat, radius=180):
         }
         candidates.append(candidate)
     candidates.sort(key=lambda c: (
+        c["possible_other_attraction_exit"],
         c["tagged_pedestrian_access_restricted"],
         not c["is_member_of_walkable_osm_way"],
         c["distance_to_converted_map_marker_m"],
@@ -307,7 +330,9 @@ def inspect_osm(payload, lng, lat, radius=180):
         "review_warning": (
             "An OSM gate node sharing a walkable way is not independent proof "
             "that the park entrance is open or that a route can cross it. "
-            "Review locally and compare actual Valhalla routes before approval."
+            "OSM 'ref' or barrier tags may describe another attraction, "
+            "such as the Jiming Temple exit. Check labels, wall passages, "
+            "walkway connectivity and real access before any approval."
         ),
     }
 
