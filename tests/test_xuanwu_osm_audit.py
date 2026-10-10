@@ -235,6 +235,55 @@ class XuanwuOSMAuditTests(unittest.TestCase):
                 for point in item["osm_result"]["gate_nodes"]
             ))
 
+    def test_xuanwu_city_wall_passage_and_sally_port_are_not_missed(self):
+        lng, lat = 118.78229935, 32.07257793
+        payload = {"elements": [
+            {"type": "node", "id": 9753621811, "lon": 118.7824099,
+             "lat": 32.072635, "tags": {"barrier": "sally_port"}},
+            {"type": "node", "id": 1111402644, "lon": 118.7831195,
+             "lat": 32.0727504, "tags": {"barrier": "entrance",
+                                         "foot": "yes", "bicycle": "yes"}},
+            {"type": "node", "id": 13875823214, "lon": 118.7822,
+             "lat": 32.07257},
+            {"type": "node", "id": 1111402632, "lon": 118.7828,
+             "lat": 32.0727},
+            {"type": "way", "id": 280718320,
+             "nodes": [9753621811, 13875823214],
+             "tags": {"highway": "service"}},
+            {"type": "way", "id": 239377731,
+             "nodes": [1111402644, 1111402632],
+             "tags": {"highway": "service"}},
+            {"type": "way", "id": 1521272063,
+             "nodes": [13875823214, 1111402632],
+             "tags": {"highway": "footway"}},
+        ]}
+        report = audit.inspect_osm(payload, lng, lat)
+        self.assertEqual(report["candidate_count"], 2)
+        by_id = {c["osm_node_id"]: c for c in report["gate_nodes"]}
+        self.assertEqual(by_id[9753621811]["node_tags"]["barrier"], "sally_port")
+        self.assertEqual(by_id[1111402644]["node_tags"]["barrier"], "entrance")
+        self.assertEqual(by_id[1111402644]["node_tags"]["foot"], "yes")
+        self.assertEqual(by_id[1111402644]["node_tags"]["bicycle"], "yes")
+        self.assertIn(280718320,
+            [p["osm_way_id"] for p in by_id[9753621811]["highway_way_memberships"]])
+        self.assertFalse(by_id[9753621811]["is_member_of_walkable_osm_way"])
+        self.assertTrue(by_id[9753621811]["not_automatically_approved"])
+
+    def test_jiming_temple_exit_cannot_rank_as_verified_lake_gate(self):
+        lng, lat = 118.79144511, 32.06429665
+        payload = {"elements": [{
+            "type": "node", "id": 12325223492,
+            "lon": 118.790473, "lat": 32.063818,
+            "tags": {"entrance": "yes", "ref": "鸡鸣寺出门"}
+        }]}
+        report = audit.inspect_osm(payload, lng, lat)
+        self.assertEqual(report["candidate_count"], 1)
+        candidate = report["gate_nodes"][0]
+        self.assertEqual(candidate["node_tags"]["ref"], "鸡鸣寺出门")
+        self.assertTrue(candidate["possible_other_attraction_exit"])
+        self.assertFalse(candidate["is_member_of_walkable_osm_way"])
+        self.assertTrue(candidate["not_automatically_approved"])
+
     def test_no_implicit_network_or_database_side_effect(self):
         with self.assertRaises(ValueError):
             audit.audit(EVIDENCE)
