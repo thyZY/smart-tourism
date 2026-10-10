@@ -1048,3 +1048,37 @@ data\entrance_evidence\xuanwu_lake_osm_audit_local.geojson
 **不需要重启WebGIS、重新运行数据库迁移或执行draft SQL。**
 任何研究结果都不会自动写入 `reviewed`，OSM步道关联也不能代表
 实际开放状态。对任一候选正式启用入口前仍需人工复核来源和现场通行。
+
+
+## 第十四阶段·真实OSM节点审阅：解放门未连通候选与线段距离复核
+
+用户本机已成功从OSM原生 `map.json` 接口获取玄武门和解放门周边真实数据；
+具体实测结果及审计结论见
+`data/entrance_evidence/xuanwu_lake_osm_initial_review_20261010.md`。
+初次审计在玄武门周边发现13条脚本认定的步行way、0个显式闸门；
+解放门周边22条步行way、1个
+[OSM node 12325223492](https://www.openstreetmap.org/node/12325223492)
+（`entrance=yes`，经纬度118.790473,32.063818）。
+此节点与转换后的高德标点约105.9m，但不属于已筛选步行way的节点列表；
+到最近步行way**节点**约43.4m，故还不能认定其可作为游园入口。
+
+最新版研究脚本增加了**最近可步行way线段**的几何投影距离，
+区别于原来的最近节点距离；并支持将两处的原始OSM JSON保存供逐条审核。
+
+```powershell
+cd D:\smart-tourism
+git pull --ff-only
+.\.venv\Scripts\python.exe scripts\audit_xuanwu_osm.py --osm-api --save-osm-snapshots
+```
+
+除以前生成的 `xuanwu_lake_osm_audit_local.json` 和 `*.geojson` 外，还会得到
+`data\entrance_evidence\xuanwu_osm_raw_local\xuanwumen_west.json`
+和
+`data\entrance_evidence\xuanwu_osm_raw_local\jiefangmen_south.json`。
+前者便于研究无闸门标注时附近OSM步道如何穿越门位，后者便于核实
+`12325223492` 与附近ways的真实关系。均为OSM来源数据，
+按ODbL要求标注© OpenStreetMap contributors。
+
+请只分享审计JSON与必要的OSM原始片段；不要在未经地图和通行证据核实之前
+向 `routing_access` 填入 `reviewed` 或把最近道路投影点直接当入口。
+本次代码仅扩展只读分析，不改变已有40个POI、PostGIS或Valhalla参数。
