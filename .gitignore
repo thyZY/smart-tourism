@@ -13,3 +13,4 @@ dist/
 # Local Overpass audit outputs: review before publishing any geographic evidence
 data/entrance_evidence/*_osm_audit_local.json
 data/entrance_evidence/*_osm_audit_local.geojson
+data/entrance_evidence/xuanwu_osm_raw_local/
