@@ -219,7 +219,8 @@ class XuanwuOSMAuditTests(unittest.TestCase):
     def test_local_raw_osm_snapshots_are_saved_without_db_actions(self):
         with tempfile.TemporaryDirectory() as folder:
             directory = Path(folder) / "raw"
-            with patch.object(audit, "fetch_osm_map", side_effect=sample_osm):
+            with patch.object(audit, "fetch_osm_map",
+                              side_effect=lambda lng, lat, radius: sample_osm(lng, lat)):
                 report = audit.audit(EVIDENCE, osm_api=True,
                                      raw_snapshot_dir=directory)
             self.assertEqual(report["routing_activation"], "none")
