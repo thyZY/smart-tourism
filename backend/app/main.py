@@ -4,6 +4,8 @@ import os
 import psycopg2
 from dotenv import load_dotenv
 
+from ai.itinerary_routes import router as itinerary_router
+
 load_dotenv()
 
 DB_HOST = os.getenv("DB_HOST")
@@ -22,6 +24,9 @@ def get_db_connection():
     )
 
 app = FastAPI()
+
+app.include_router(itinerary_router)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
