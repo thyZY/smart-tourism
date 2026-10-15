@@ -624,9 +624,10 @@ const frameResults = (features) => {
 
 const setMapDisplayMode = (mode) => {
   if (!map?.getLayer('places-points') || !map.getLayer('places-heatmap')) return
-
   mapDisplayMode.value = mode
-  map.setLayoutProperty('places-points', 'visibility', mode === 'points' ? 'visible' : 'none')
+  for (const layer of ['places-points', 'places-clusters', 'places-cluster-count']) {
+    map.setLayoutProperty(layer, 'visibility', mode === 'points' ? 'visible' : 'none')
+  }
   map.setLayoutProperty('places-heatmap', 'visibility', mode === 'heatmap' ? 'visible' : 'none')
 }
 
@@ -928,6 +929,32 @@ onMounted(() => {
         'line-opacity': 0.8
       }
     })
+    map.on('click', 'places-clusters', async (event) => {
+      if (gridAnalysisVisible.value) return
+      const clusterId = event.features?.[0]?.properties?.cluster_id
+      const coordinate = event.features?.[0]?.geometry?.coordinates
+      if (!Number.isInteger(clusterId) || !Array.isArray(coordinate)) return
+      const source = map?.getSource('places-clusters')
+      if (!source?.getClusterExpansionZoom) return
+      try {
+        const zoom = await source.getClusterExpansionZoom(clusterId)
+        if (!map || !Number.isFinite(zoom)) return
+        map.easeTo({ center: coordinate, zoom: Math.min(zoom, 16) })
+      } catch {
+        // Source may be replaced between clicks and cluster expansion.
+      }
+    })
+    map.on('mouseenter', 'places-clusters', () => {
+      map.getCanvas().style.cursor = 'zoom-in'
+    })
+    map.on('mouseleave', 'places-clusters', () => {
+      map.getCanvas().style.cursor = ''
+    })
+    map.on('click', 'route-stop-circles', (event) => {
+      if (gridAnalysisVisible.value) return
+      const feature = event.features?.[0]
+      if (feature) openPlaceDetail(feature)
+    })
     map.on('click', 'places-points', (e) => {
       if (gridAnalysisVisible.value) return
 
@@ -942,6 +969,20 @@ onMounted(() => {
     })
     map.on('mouseleave', 'places-points', () => {
       map.getCanvas().style.cursor = ''
+    })
+    let hoverPopup = null
+    map.on('mouseenter', 'places-points', event => {
+      const poi = event.features?.[0]
+      if (!poi || !map) return
+      hoverPopup?.remove()
+      hoverPopup = new Popup({ closeButton: false, closeOnClick: false, offset: 14 })
+        .setLngLat(poi.geometry.coordinates)
+        .setText(poi.properties.name || '景点')
+        .addTo(map)
+    })
+    map.on('mouseleave', 'places-points', () => {
+      hoverPopup?.remove()
+      hoverPopup = null
     })
     map.on('click', 'tourism-grid-fill', (event) => {
       const feature = event.features?.[0]
@@ -1113,6 +1154,10 @@ onUnmounted(() => {
             @click.stop="toggleFavorite(feature)"
           >{{ isFavorite(feature.properties.id) ? '★' : '☆' }}</button>
           <strong>{{ feature.properties.name }}</strong>
+          <span v-if="selectedRoutePlaces.some(p => p.properties.id === feature.properties.id)"
+            class="route-order-pill"
+            :title="'行程第 ' + (selectedRoutePlaces.findIndex(p => p.properties.id === feature.properties.id) + 1) + ' 站'"
+          >第 {{ selectedRoutePlaces.findIndex(p => p.properties.id === feature.properties.id) + 1 }} 站</span>
           <div>{{ feature.properties.category }}</div>
         </div>
       </div>
@@ -1307,6 +1352,8 @@ body { overflow: hidden; font-family: Inter, 'Segoe UI', 'Microsoft YaHei', sans
 .result-item > div {margin-top:4px;font-size:12px;color:#8492a6;}
 .result-item-selected {background:#eaf2ff;}
 .result-item-route-selected {border-left:3px solid #2563eb;padding-left:13px;}
+.route-order-pill {display:inline-flex;margin-top:6px;padding:2px 7px;border-radius:12px;
+  background:#e2edff;color:#1955a4;font-size:11px;font-weight:700;}
 .favorite-toggle {position:absolute;right:12px;top:12px;cursor:pointer;border:0;background:none;
   font-size:22px;color:#e8a018;padding:2px;line-height:1;}
 .explorer-empty {padding:20px 16px;color:#66758d;font-size:13px;}
