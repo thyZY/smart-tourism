@@ -61,12 +61,19 @@ assert.equal(requests.length, 0, 'no query before map load')
 load()
 assert.equal(map.sources.places.data.type, 'FeatureCollection', 'places source is created before initial request')
 assert.equal(map.sources['route-line'].data.type, 'FeatureCollection', 'route source is created before initial request')
+assert.equal(map.sources['route-stops'].data.features.length, 0)
+assert.equal(map.sources['selected-place'].data.features.length, 0)
 assert.equal(map.sources['cultural-line'].data.type, 'FeatureCollection', 'cultural line source is created before initial request')
 assert.equal(map.sources['tourism-grid'].data.type, 'FeatureCollection', 'tourism grid source is created before initial request')
 assert.equal(api.loading.value, true)
 assert.equal(api.mapDisplayMode.value, 'points', 'points are the default display mode')
-assert.equal(map.layers['places-points'].source, 'places')
-assert.equal(map.layers['places-heatmap'].source, 'places', 'heatmap reuses the places source')
+assert.equal(map.layers['places-points'].source, 'places-clusters')
+assert.equal(map.layers['places-heatmap'].source, 'places', 'raw POIs remain unclustered for heatmap')
+assert.equal(map.layers['places-clusters'].source, 'places-clusters')
+assert.equal(map.layers['places-cluster-count'].source, 'places-clusters')
+assert.equal(map.layers['route-stop-numbers'].source, 'route-stops')
+assert.equal(map.layers['selected-place-halo'].source, 'selected-place')
+assert.equal(map.sources['places-clusters'].data.type, 'FeatureCollection')
 assert.equal(map.layers['cultural-line-layer'].source, 'cultural-line', 'cultural lines use their own source')
 assert.equal(map.layers['tourism-grid-fill'].source, 'tourism-grid', 'grid fill uses its own source')
 assert.equal(map.layers['tourism-grid-outline'].source, 'tourism-grid', 'grid outline uses its own source')
@@ -75,16 +82,20 @@ const sourceBeforeModeSwitch = map.sources.places.data
 const requestsBeforeModeSwitch = requests.length
 api.setMapDisplayMode('heatmap')
 assert.equal(api.mapDisplayMode.value, 'heatmap')
-assert.deepEqual(map.layoutProperties.slice(-2), [
+assert.deepEqual(map.layoutProperties.slice(-4), [
   { id: 'places-points', property: 'visibility', value: 'none' },
+  { id: 'places-clusters', property: 'visibility', value: 'none' },
+  { id: 'places-cluster-count', property: 'visibility', value: 'none' },
   { id: 'places-heatmap', property: 'visibility', value: 'visible' }
 ])
 assert.equal(requests.length, requestsBeforeModeSwitch, 'mode switch does not request places again')
 assert.equal(map.sources.places.data, sourceBeforeModeSwitch, 'mode switch does not replace source data')
 api.setMapDisplayMode('points')
 assert.equal(api.mapDisplayMode.value, 'points')
-assert.deepEqual(map.layoutProperties.slice(-2), [
+assert.deepEqual(map.layoutProperties.slice(-4), [
   { id: 'places-points', property: 'visibility', value: 'visible' },
+  { id: 'places-clusters', property: 'visibility', value: 'visible' },
+  { id: 'places-cluster-count', property: 'visibility', value: 'visible' },
   { id: 'places-heatmap', property: 'visibility', value: 'none' }
 ])
 await api.searchPlaces()
@@ -239,8 +250,12 @@ assert.equal(map.sources.places.data.features.length, 3, 'normal search restores
 api.toggleRoutePlace(museum)
 assert.equal(api.selectedRoutePlaces.value.length, 1, 'first route place is selected')
 assert.equal(map.sources['route-line'].data.features.length, 0, 'one selected place has no line')
+assert.equal(map.sources['route-stops'].data.features.length, 1)
+assert.equal(map.sources['route-stops'].data.features[0].properties.stop_order, 1)
 api.toggleRoutePlace(confuciusTemple)
 assert.equal(api.selectedRoutePlaces.value.length, 2, 'second route place is selected')
+assert.deepEqual(JSON.parse(JSON.stringify(
+  map.sources['route-stops'].data.features.map(f => f.properties.stop_order))), [1, 2])
 const route = map.sources['route-line'].data.features[0].geometry
 assert.deepEqual(JSON.parse(JSON.stringify(route)), {
   type: 'LineString',
@@ -253,6 +268,7 @@ assert.equal(map.sources['route-line'].data.features.length, 0, 'line clears whe
 api.clearRoute()
 assert.equal(api.selectedRoutePlaces.value.length, 0, 'clear route removes all selected places')
 assert.equal(api.routeDistanceKm.value, 0, 'clear route resets distance')
+assert.equal(map.sources['route-stops'].data.features.length, 0, 'clearing route removes numbered stops')
 assert.equal(culturalLines.length, 3, 'three cultural relationship lines are configured')
 assert.deepEqual(
   culturalLines[0].places,
