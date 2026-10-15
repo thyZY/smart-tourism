@@ -27,6 +27,8 @@ jobs:
         run: node tests/frontend-workflow.mjs
       - name: AI plan, restore and export UI state tests
         run: node tests/ai-itinerary-ui.mjs
+      - name: Workspace layout and previous feature availability
+        run: node tests/ui-layout.mjs
       - name: Build Vue frontend
         run: |
           cd frontend
