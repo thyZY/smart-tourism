@@ -25,6 +25,8 @@ jobs:
         run: python -m unittest discover -s tests -p 'test_ai_itinerary_management.py' -v
       - name: Existing frontend state and map workflow regression
         run: node tests/frontend-workflow.mjs
+      - name: AI plan, restore and export UI state tests
+        run: node tests/ai-itinerary-ui.mjs
       - name: Build Vue frontend
         run: |
           cd frontend
