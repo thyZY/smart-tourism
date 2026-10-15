@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/itinerary-management-20261014
+      - 'feat/v1.*'
   pull_request:
 
 jobs:
@@ -22,7 +23,7 @@ jobs:
       - name: Install backend dependencies
         run: python -m pip install -r backend/requirements.txt
       - name: Offline grounded itinerary tests (no DB, no DeepSeek Key)
-        run: python -m unittest discover -s tests -p 'test_ai_itinerary_management.py' -v
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
       - name: Existing frontend state and map workflow regression
         run: node tests/frontend-workflow.mjs
       - name: AI plan, restore and export UI state tests
