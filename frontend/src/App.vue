@@ -1223,6 +1223,7 @@ onUnmounted(() => {
             :route-kind="routeKind"
             :road-travel-minutes="roadTravelMinutes"
             @clear="clearRoute"
+            @focus-place="focusResult"
           />
         </div>
         <div v-show="activeWorkspaceTab === 'themes'" class="workspace-slot" role="tabpanel">
