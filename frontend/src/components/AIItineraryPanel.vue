@@ -236,6 +236,15 @@ function printReport() {
           <p>未参与决策：{{ result.recommendation_audit.not_considered.join('、') }}</p>
           <p>说明：{{ result.recommendation_audit.limitations }}</p>
         </details>
+        <details v-if="result.quality_diagnostics" class="ai-audit">
+          <summary>推荐结果质量诊断（非准确率）</summary>
+          <p>已选 {{ result.quality_diagnostics.selected_count }} / 候选 {{ result.quality_diagnostics.candidate_count }} 处景点</p>
+          <p>类别数：{{ result.quality_diagnostics.distinct_category_count }}；类别多样性比例：{{ result.quality_diagnostics.category_diversity_ratio }}</p>
+          <p>规则关键词命中：{{ result.quality_diagnostics.rule_keyword_match_count }} / {{ result.quality_diagnostics.selected_count }}（{{ result.quality_diagnostics.rule_keyword_match_ratio }}）</p>
+          <p v-if="!result.quality_diagnostics.rule_is_actual_ranker">仅供对照，不能代表 DeepSeek 的推荐准确率。</p>
+          <p>类别构成：{{ Object.entries(result.quality_diagnostics.category_counts).map(([name, count]) => name + ' ' + count).join('、') || '未分类' }}</p>
+          <p v-for="limit in result.quality_diagnostics.limitations" :key="limit">{{ limit }}</p>
+        </details>
         <ol><li v-for="s in result.stops" :key="s.id">{{ s.name }} · {{ s.category }}<small> — {{ s.reason }}<template v-if="result.recommendation_audit?.score_is_selection_basis && Number.isFinite(s.rule_score)">（规则匹配分：{{ s.rule_score }}）</template></small></li></ol>
         <p v-if="result.route?.status === 'verified_by_routing_service'">
           Valhalla道路：{{ result.route.distance_km }} km，约 {{ result.route.duration_minutes }} 分钟
