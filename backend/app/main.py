@@ -4,7 +4,7 @@ import os
 import psycopg2
 from dotenv import load_dotenv
 
-from ai.itinerary_routes import router as itinerary_router
+from .ai.itinerary_routes import router as itinerary_router
 
 load_dotenv()
 
