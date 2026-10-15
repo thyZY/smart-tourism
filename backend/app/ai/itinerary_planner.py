@@ -22,9 +22,9 @@ _CATEGORY_MATCH = {
 
 def _score(poi, style, location):
     category = poi["category"]
-    terms = [term for keyword, terms in _CATEGORY_MATCH.items()
-             if keyword in style or keyword in location]
-    flat = set(term for group in terms for term in group)
+    groups = [terms for keyword, terms in _CATEGORY_MATCH.items()
+              if keyword in style or keyword in location]
+    flat = set(term for group in groups for term in group)
     return (4 if any(t in category for t in flat) else 0) + (
         2 if location.strip() and location.strip() in poi["name"] else 0)
 
