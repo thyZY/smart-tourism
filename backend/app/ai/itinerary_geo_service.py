@@ -7,6 +7,7 @@ import json
 import math
 import os
 from urllib.request import Request, urlopen
+from .valhalla_config import valhalla_root, request_opener
 from urllib.error import HTTPError, URLError
 
 
@@ -83,18 +84,17 @@ def valhalla_route(places, mode="pedestrian", endpoint=None):
 
     A failed or disabled router NEVER emits a straight-line 'road route'.
     """
-    endpoint = endpoint or os.getenv("VALHALLA_URL", "").strip()
     if len(places) < 2:
         return {"status": "unavailable", "message": "至少选择两个景点"}
-    if not endpoint:
-        return {"status": "unavailable", "message": "尚未配置VALHALLA_URL；仅显示直线预览"}
     if mode not in ("pedestrian", "bicycle", "auto"):
         raise ValueError("Unsupported Valhalla costing")
-    if not endpoint.startswith(("http://127.0.0.1:", "http://localhost:")):
-        return {"status": "unavailable", "message": "仅允许使用本机Valhalla服务"}
-    url = endpoint.rstrip("/")
-    if not url.endswith("/route"):
-        url += "/route"
+    root = valhalla_root()
+    if not root:
+        return {"status": "unavailable", "message": "Valhalla 地址未通过白名单校验"}
+    # The caller may only supply the already-validated origin or its /route.
+    if endpoint is not None and endpoint.rstrip("/") not in (root, root + "/route"):
+        return {"status": "unavailable", "message": "Valhalla 地址未通过白名单校验"}
+    url = root + "/route"
     req_data = {
         "locations": [{"lat": p["lat"], "lon": p["lng"]} for p in places],
         "costing": mode, "units": "kilometers"
@@ -102,7 +102,7 @@ def valhalla_route(places, mode="pedestrian", endpoint=None):
     request = Request(url, data=json.dumps(req_data).encode("utf-8"),
                       headers={"Content-Type": "application/json"}, method="POST")
     try:
-        with urlopen(request, timeout=18) as response:
+        with request_opener().open(request, timeout=18) as response:
             raw = response.read(3_000_001)
         if len(raw) > 3_000_000:
             raise ValueError("Route response too large")
