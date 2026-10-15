@@ -228,7 +228,15 @@ function printReport() {
         <h4>{{ result.title }}</h4>
         <p>{{ result.summary }}</p>
         <small>排序方式：{{ result.planning_method === 'deepseek_ranked_verified_ids' ? 'DeepSeek从真实POI中排序' : '数据库规则排序（AI未使用或不可用）' }}</small>
-        <ol><li v-for="s in result.stops" :key="s.id">{{ s.name }} · {{ s.category }}<small> — {{ s.reason }}</small></li></ol>
+        <details v-if="result.recommendation_audit" class="ai-audit">
+          <summary>查看推荐依据与数据限制</summary>
+          <p>参与候选：{{ result.recommendation_audit.candidate_count }} 个数据库景点</p>
+          <p>{{ result.recommendation_audit.rule }}</p>
+          <p v-if="!result.recommendation_audit.score_is_selection_basis">当前由 DeepSeek 排序，以下规则分只是参考，并非模型决策解释。</p>
+          <p>未参与决策：{{ result.recommendation_audit.not_considered.join('、') }}</p>
+          <p>说明：{{ result.recommendation_audit.limitations }}</p>
+        </details>
+        <ol><li v-for="s in result.stops" :key="s.id">{{ s.name }} · {{ s.category }}<small> — {{ s.reason }}<template v-if="result.recommendation_audit?.score_is_selection_basis && Number.isFinite(s.rule_score)">（规则匹配分：{{ s.rule_score }}）</template></small></li></ol>
         <p v-if="result.route?.status === 'verified_by_routing_service'">
           Valhalla道路：{{ result.route.distance_km }} km，约 {{ result.route.duration_minutes }} 分钟
         </p>
@@ -284,5 +292,8 @@ function printReport() {
 .ai-saved-item{border-bottom:1px solid #eee;padding:5px 0}
 .ai-saved-item span{display:block}
 .ai-results ol{padding-left:22px}
+.ai-audit{margin:10px 0;padding:8px;border:1px solid #d9e1ee;border-radius:6px;background:#f8fafc}
+.ai-audit summary{cursor:pointer;font-weight:600;color:#1d3557}
+.ai-audit p{font-size:12px;line-height:1.55}
 @media(max-height:650px){.ai-content{max-height:38vh}}
 </style>
