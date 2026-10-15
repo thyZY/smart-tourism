@@ -47,6 +47,7 @@ function toggleExcludedId(id) {
 }
 const result = ref(null)
 const preview = ref(null)
+const editInstruction = ref('')
 const saved = ref(readSaved())
 const error = ref('')
 const notice = ref('')
@@ -134,6 +135,28 @@ async function generate(onlyPreview = false) {
   } catch (err) {
     if (seq !== requestSeq) return
     error.value = err?.response?.data?.detail || '规划失败：请检查后端、数据库或连接'
+  } finally {
+    if (seq === requestSeq) loading.value = false
+  }
+}
+async function requestEditPreview() {
+  if (!result.value || loading.value) return
+  if (!editInstruction.value.trim()) { error.value = '请输入修改要求'; return }
+  loading.value = true
+  error.value = ''
+  preview.value = null
+  const seq = ++requestSeq
+  try {
+    const response = await axios.post(apiRoot + '/edit-preview', {
+      place_ids: ids(result.value),
+      instruction: editInstruction.value.trim(),
+      travel_mode: result.value.mode || 'pedestrian'
+    }, { timeout: 30000 })
+    if (seq !== requestSeq) return
+    preview.value = response.data
+    notice.value = '修改预览已生成，当前地图未变化；请检查后再确认'
+  } catch (err) {
+    if (seq === requestSeq) error.value = err?.response?.data?.detail || '修改预览失败，当前行程未变化'
   } finally {
     if (seq === requestSeq) loading.value = false
   }
@@ -333,6 +356,13 @@ function printReport() {
           Valhalla道路：{{ result.route.distance_km }} km，约 {{ result.route.duration_minutes }} 分钟
         </p>
         <p v-else>道路未核验；地图直线只作景点顺序预览。</p>
+        <div class="ai-edit-workspace">
+          <label>按要求修改当前行程（仅生成预览）
+            <input v-model="editInstruction" maxlength="160" placeholder="例如：删除中山陵；或将夫子庙调整到第2站" />
+          </label>
+          <button type="button" :disabled="loading" @click="requestEditPreview">生成修改预览</button>
+          <small>当前支持准确景点名称的删除、调整站次；其他自然语言指令会明确拒绝，不会擅自修改。</small>
+        </div>
         <div class="ai-actions">
           <button type="button" :disabled="loading" @click="generate(true)">减少景点并预览</button>
           <button type="button" @click="save">保存到我的行程</button>
@@ -344,6 +374,7 @@ function printReport() {
       <div v-if="preview" class="ai-preview">
         <h4>待确认优化方案</h4>
         <p>{{ preview.stops.map(s => s.name).join(' → ') }}</p>
+        <p v-if="preview.edit_summary">操作：{{ preview.edit_summary.operation === 'remove' ? '删除站点' : '调整顺序' }}；匹配景点ID：{{ preview.edit_summary.matched_place_id }}</p>
         <button type="button"  :disabled="loading" @click="confirmPreview">确认替换当前行程</button>
         <button type="button" @click="preview = null">放弃调整</button>
       </div>
@@ -387,6 +418,8 @@ function printReport() {
 .ai-audit{margin:10px 0;padding:8px;border:1px solid #d9e1ee;border-radius:6px;background:#f8fafc}
 .ai-audit summary{cursor:pointer;font-weight:600;color:#1d3557}
 .ai-audit p{font-size:12px;line-height:1.55}
+.ai-edit-workspace{border:1px solid #d9e1ee;border-radius:7px;padding:8px;margin:9px 0;display:grid;gap:5px}
+.ai-edit-workspace small{font-size:11px;color:#64748b}
 .ai-exclusion-picker{margin:8px 0;padding:8px;border:1px solid #d9e1ee;border-radius:6px}
 .ai-exclusion-results{max-height:156px;overflow-y:auto;margin-top:6px}
 .ai-exclusion-results label{display:flex;align-items:center;gap:6px;padding:3px}
