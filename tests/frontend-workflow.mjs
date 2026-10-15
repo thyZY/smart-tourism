@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import themes from '../frontend/src/data/themes.js'
+import culturalLines from '../frontend/src/data/culturalLines.js'
 
 const appSource = readFileSync(new URL('../frontend/src/App.vue', import.meta.url), 'utf8')
 const script = appSource.split('<script setup>')[1].split('</script>')[0].replace(/^import .*$/gm, '')
@@ -43,14 +44,14 @@ const context = vm.createContext({
   onUnmounted: fn => { unmounted = fn },
   nextTick: () => Promise.resolve(),
   Map: function () { return map }, NavigationControl: function () {},
-  setWorkerUrl() {}, workerUrl: '', AbortController, localStorage, themes,
+  setWorkerUrl() {}, workerUrl: '', AbortController, localStorage, themes, culturalLines,
   document: { querySelector: () => null },
   axios: {
     isCancel: () => false,
     get: (url, options) => new Promise((resolve, reject) => requests.push({ url, options, resolve, reject }))
   }
 })
-vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, selectTheme, selectedTheme, focusResult, closePlaceDetail, toggleRoutePlace, clearRoute, toggleFavorite, showFavoritePlaces, isFavorite, favoritePlaceIds, showFavoritesOnly, selectedRoutePlaces, routeDistanceKm, selectedPlace, selectedPlaceId, placeDetails, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
+vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, setGridAnalysisVisible, tourismGrid, gridAnalysisVisible, selectTheme, selectedTheme, selectCulturalLine, clearCulturalLine, selectedCulturalLine, focusResult, closePlaceDetail, toggleRoutePlace, clearRoute, toggleFavorite, showFavoritePlaces, isFavorite, favoritePlaceIds, showFavoritesOnly, selectedRoutePlaces, routeDistanceKm, selectedPlace, selectedPlaceId, placeDetails, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
 const api = context.api
 const empty = { type: 'FeatureCollection', features: [] }
 const tick = () => new Promise(resolve => setImmediate(resolve))
@@ -60,10 +61,15 @@ assert.equal(requests.length, 0, 'no query before map load')
 load()
 assert.equal(map.sources.places.data.type, 'FeatureCollection', 'places source is created before initial request')
 assert.equal(map.sources['route-line'].data.type, 'FeatureCollection', 'route source is created before initial request')
+assert.equal(map.sources['cultural-line'].data.type, 'FeatureCollection', 'cultural line source is created before initial request')
+assert.equal(map.sources['tourism-grid'].data.type, 'FeatureCollection', 'tourism grid source is created before initial request')
 assert.equal(api.loading.value, true)
 assert.equal(api.mapDisplayMode.value, 'points', 'points are the default display mode')
 assert.equal(map.layers['places-points'].source, 'places')
 assert.equal(map.layers['places-heatmap'].source, 'places', 'heatmap reuses the places source')
+assert.equal(map.layers['cultural-line-layer'].source, 'cultural-line', 'cultural lines use their own source')
+assert.equal(map.layers['tourism-grid-fill'].source, 'tourism-grid', 'grid fill uses its own source')
+assert.equal(map.layers['tourism-grid-outline'].source, 'tourism-grid', 'grid outline uses its own source')
 assert.equal(map.layers['places-heatmap'].layout.visibility, 'none', 'heatmap starts hidden')
 const sourceBeforeModeSwitch = map.sources.places.data
 const requestsBeforeModeSwitch = requests.length
@@ -247,6 +253,119 @@ assert.equal(map.sources['route-line'].data.features.length, 0, 'line clears whe
 api.clearRoute()
 assert.equal(api.selectedRoutePlaces.value.length, 0, 'clear route removes all selected places')
 assert.equal(api.routeDistanceKm.value, 0, 'clear route resets distance')
+assert.equal(culturalLines.length, 3, 'three cultural relationship lines are configured')
+assert.deepEqual(
+  culturalLines[0].places,
+  ['明孝陵', '中华门瓮城', '神功圣德碑', '大报恩寺遗址景区', '朝天宫'],
+  'Ming cultural line has its configured POIs'
+)
+const culturalPlaces = {
+  type: 'FeatureCollection',
+  features: [
+    { type: 'Feature', properties: { id: 11, name: '明孝陵' }, geometry: { type: 'Point', coordinates: [118.8470, 32.0600] } },
+    { type: 'Feature', properties: { id: 12, name: '中华门瓮城' }, geometry: { type: 'Point', coordinates: [118.7790, 32.0200] } },
+    { type: 'Feature', properties: { id: 13, name: '神功圣德碑' }, geometry: { type: 'Point', coordinates: [118.8420, 32.0590] } },
+    { type: 'Feature', properties: { id: 14, name: '大报恩寺遗址景区' }, geometry: { type: 'Point', coordinates: [118.7850, 32.0140] } },
+    { type: 'Feature', properties: { id: 15, name: '朝天宫' }, geometry: { type: 'Point', coordinates: [118.7810, 32.0340] } }
+  ]
+}
+const culturalPlacesRequest = api.searchPlaces()
+requests.at(-1).resolve({ data: culturalPlaces })
+await culturalPlacesRequest
+api.toggleRoutePlace(museum)
+api.toggleRoutePlace(confuciusTemple)
+const routeBeforeCulturalLine = JSON.parse(JSON.stringify(map.sources['route-line'].data))
+api.selectCulturalLine(culturalLines[0])
+assert.equal(api.selectedCulturalLine.value.id, 'ming-nanjing', 'selecting a cultural line stores its selection')
+const culturalLine = map.sources['cultural-line'].data.features[0]
+assert.equal(culturalLine.geometry.type, 'LineString', 'cultural line is rendered as a LineString')
+assert.deepEqual(
+  JSON.parse(JSON.stringify(culturalLine.geometry.coordinates)),
+  culturalPlaces.features.map((feature) => feature.geometry.coordinates),
+  'cultural line coordinates match its configured POIs in order'
+)
+assert.deepEqual(
+  JSON.parse(JSON.stringify(map.sources['route-line'].data)),
+  routeBeforeCulturalLine,
+  'selecting a cultural line does not change the sightseeing route source'
+)
+assert.deepEqual(
+  JSON.parse(JSON.stringify(api.selectedRoutePlaces.value.map((feature) => feature.properties.id))),
+  [1, 2],
+  'selecting a cultural line does not change selectedRoutePlaces'
+)
+api.clearCulturalLine()
+assert.equal(api.selectedCulturalLine.value, null, 'clearing cultural line clears its selection')
+assert.equal(map.sources['cultural-line'].data.features.length, 0, 'clearing cultural line only empties its source')
+assert.deepEqual(
+  JSON.parse(JSON.stringify(map.sources['route-line'].data)),
+  routeBeforeCulturalLine,
+  'clearing cultural line does not change the sightseeing route source'
+)
+api.clearRoute()
+const gridCategories = ['博物馆', '历史文化', '古迹遗址', '城市公园']
+const gridCellSpecs = [
+  { lng: 118.70, lat: 32.00, count: 15 },
+  { lng: 118.74, lat: 32.00, count: 10 },
+  { lng: 118.70, lat: 32.04, count: 8 },
+  { lng: 118.74, lat: 32.04, count: 7 }
+]
+let gridPlaceId = 100
+const gridPlaces = {
+  type: 'FeatureCollection',
+  features: gridCellSpecs.flatMap((cell) => Array.from({ length: cell.count }, (_, index) => ({
+    type: 'Feature',
+    properties: {
+      id: gridPlaceId++,
+      name: `格网景点 ${gridPlaceId}`,
+      category: gridCategories[index % gridCategories.length]
+    },
+    geometry: {
+      type: 'Point',
+      coordinates: [cell.lng + (index % 4) * 0.001, cell.lat + Math.floor(index / 4) * 0.001]
+    }
+  })))
+}
+const gridPlacesRequest = api.searchPlaces()
+requests.at(-1).resolve({ data: gridPlaces })
+await gridPlacesRequest
+const gridFeatures = api.tourismGrid.value.features
+assert.equal(api.tourismGrid.value.type, 'FeatureCollection', 'tourism grid is a FeatureCollection')
+assert.equal(gridFeatures.length, 4, 'only non-empty grid cells are retained')
+assert.equal(
+  gridFeatures.reduce((total, feature) => total + feature.properties.poi_count, 0),
+  40,
+  'grid POI counts cover all 40 complete POIs'
+)
+assert.ok(gridFeatures.every((feature) => feature.geometry.type === 'Polygon'), 'grid features are polygons')
+assert.ok(gridFeatures.every((feature) => feature.properties.poi_count >= 1), 'every retained grid contains POIs')
+assert.ok(gridFeatures.every((feature) => feature.properties.category_count === 4), 'grid category counts are calculated')
+assert.ok(gridFeatures.every((feature) => ['low', 'medium', 'high'].includes(feature.properties.richness_level)), 'grid richness levels are set')
+const routeBeforeGrid = JSON.parse(JSON.stringify(api.selectedRoutePlaces.value))
+const favoritesBeforeGrid = JSON.parse(JSON.stringify(api.favoritePlaceIds.value))
+const culturalLineBeforeGrid = JSON.parse(JSON.stringify(map.sources['cultural-line'].data))
+api.setMapDisplayMode('heatmap')
+api.setGridAnalysisVisible(true)
+assert.equal(api.gridAnalysisVisible.value, true, 'grid analysis can be shown')
+assert.deepEqual(map.layoutProperties.slice(-2), [
+  { id: 'tourism-grid-fill', property: 'visibility', value: 'visible' },
+  { id: 'tourism-grid-outline', property: 'visibility', value: 'visible' }
+])
+assert.equal(api.mapDisplayMode.value, 'heatmap', 'showing grids does not change heatmap mode')
+assert.equal(map.layers['places-heatmap'].source, 'places', 'heatmap remains on its own places source')
+const selectedBeforeGridClick = api.selectedPlace.value
+map.handlers['click:places-points']({ features: [museum] })
+assert.equal(api.selectedPlace.value, selectedBeforeGridClick, 'grid clicks do not change selected places')
+assert.deepEqual(JSON.parse(JSON.stringify(api.selectedRoutePlaces.value)), routeBeforeGrid, 'grid analysis does not modify selected routes')
+assert.deepEqual(JSON.parse(JSON.stringify(api.favoritePlaceIds.value)), favoritesBeforeGrid, 'grid analysis does not modify favorites')
+assert.deepEqual(JSON.parse(JSON.stringify(map.sources['cultural-line'].data)), culturalLineBeforeGrid, 'grid analysis does not modify cultural lines')
+api.setGridAnalysisVisible(false)
+assert.equal(api.gridAnalysisVisible.value, false, 'grid analysis can be hidden')
+assert.deepEqual(map.layoutProperties.slice(-2), [
+  { id: 'tourism-grid-fill', property: 'visibility', value: 'none' },
+  { id: 'tourism-grid-outline', property: 'visibility', value: 'none' }
+])
+api.setMapDisplayMode('points')
 const pending = api.searchPlaces()
 const last = requests.at(-1)
 const previous = map.sources.places.data
@@ -285,4 +404,4 @@ assert.deepEqual(
   [],
   'invalid localStorage JSON restores as an empty favorites list'
 )
-console.log('PASS: initialization lock, theme filtering/route generation, heatmap reuse, route planning, persistent favorites/filtering/empty state, failure paths, current-area bounds/query behavior, and unmount cancellation')
+console.log('PASS: spatial grid analysis, cultural relationship lines, theme filtering/route generation, heatmap reuse, route planning, persistent favorites/filtering/empty state, failure paths, current-area bounds/query behavior, and unmount cancellation')
