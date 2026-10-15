@@ -90,9 +90,20 @@ class ItineraryPlanner:
 
         mapping = {p["id"]: p for p in candidates}
         places = [mapping[id_] for id_ in preferred]
+        # Heuristic scores describe our local rules, not the LLM's reasoning.
+        rule_scores = {p["id"]: _score(p, style, location) for p in candidates}
+        audit = {
+            "method": method,
+            "candidate_count": len(candidates),
+            "rule": "类别关键词命中加4分；需求与景点名称完全匹配加2分；同分按ID排序",
+            "score_is_selection_basis": method == "local_rule_fallback",
+            "not_considered": ["开放时间", "票价", "实时客流", "无障碍条件", "真实道路时间"],
+            "limitations": "规则分仅解释本地排序，不能用来解释DeepSeek内部决策。",
+        }
         stops = [{
             "id": p["id"], "name": p["name"], "category": p["category"],
             "address": p["address"], "lng": p["lng"], "lat": p["lat"],
+            "rule_score": rule_scores[p["id"]],
             "reason": ("数据库中的真实景点，类别为" + (p["category"] or "未分类")
                        + "；需人工确认开放时间及无障碍条件")
         } for p in places]
@@ -102,6 +113,7 @@ class ItineraryPlanner:
             "title": f"{location[:40]}·{style[:30]}一日游",
             "summary": "已根据现有PostGIS景点记录生成候选行程。未核实景区开放、客流和无障碍条件。",
             "planning_method": method,
+            "recommendation_audit": audit,
             "days": 1, "mode": travel_mode, "stops": stops,
             "route": routing,
             "selected_places": {"type": "FeatureCollection", "features": [{
