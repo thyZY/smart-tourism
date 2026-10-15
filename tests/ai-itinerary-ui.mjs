@@ -41,7 +41,7 @@ const context = vm.createContext({
   axios: { get: async () => ({ data: { type: 'FeatureCollection', features: [buildFeature(1,'博物馆',118.7,32),buildFeature(2,'公园',118.8,32)] } }), post: async (url,payload) => {
     calls.push({ url,payload })
     if (failure) throw { response: { data: { detail:'历史景点失效' } } }
-    return { data: buildPlan(url.endsWith('/restore') ? payload.place_ids : [1,2,3]) }
+    return { data: buildPlan(url.endsWith('/restore') ? payload.place_ids : url.endsWith('/edit-preview') ? [1,2] : [1,2,3]) }
   }},
   crypto: { randomUUID: () => 'test-uuid' },
   Blob, Math, Date, Number, JSON,
@@ -52,7 +52,7 @@ const context = vm.createContext({
     write: s=>{printed+=s},close() {}},focus() {},print() {}
   }) }
 })
-vm.runInContext(script + '\nthis.testApi={request,result,preview,saved,error,notice,generate,apply,confirmPreview,excludedPlaceInput,exclusionSearch,exclusionChoices,selectedExcludedIds,loadExclusionChoices,filteredExclusionChoices,toggleExcludedId,save,restore,removeSaved,invalidateCurrent,exportRoad,exportJson,printReport};',context)
+vm.runInContext(script + '\nthis.testApi={request,result,preview,saved,error,notice,generate,apply,confirmPreview,editInstruction,requestEditPreview,excludedPlaceInput,exclusionSearch,exclusionChoices,selectedExcludedIds,loadExclusionChoices,filteredExclusionChoices,toggleExcludedId,save,restore,removeSaved,invalidateCurrent,exportRoad,exportJson,printReport};',context)
 const api=context.testApi
 
 await api.loadExclusionChoices()
@@ -81,6 +81,14 @@ assert.equal(events[0].name,'apply')
 assert.equal(api.result.value.stops.length,3)
 assert.equal(api.notice.value, '', 'validation errors clear earlier notices')
 assert.equal(api.result.value.route.status,'unavailable')
+api.editInstruction.value = '删除景点3'
+await api.requestEditPreview()
+assert.equal(api.preview.value.stops.length,2)
+assert.equal(events.length,1,'edit preview must not apply automatically')
+api.confirmPreview()
+assert.equal(events.length,2,'edit applies only after confirmation')
+await api.generate()
+assert.equal(events.length,3,'fresh generation resets the applied edit')
 api.exportRoad()
 assert.match(api.error.value,/不能导出直线/)
 api.save()
@@ -88,11 +96,11 @@ assert.equal(api.saved.value.length,1)
 assert.deepEqual(JSON.parse(store.get('smart-tourism-saved-itineraries-v1'))[0].place_ids,[1,2,3])
 await api.generate(true)
 assert.equal(api.preview.value.stops.length,3)
-assert.equal(events.length,1,'optimization is not auto applied to map')
+assert.equal(events.length,3,'optimization is not auto applied to map')
 api.confirmPreview()
-assert.equal(events.length,2,'user confirmation applies preview')
+assert.equal(events.length,4,'user confirmation applies preview')
 api.confirmPreview()
-assert.equal(events.length,2,'confirmed preview cannot apply twice')
+assert.equal(events.length,4,'confirmed preview cannot apply twice')
 failure = true
 await api.restore(api.saved.value[0])
 assert.equal(api.result.value.stops.length,3,'failed restore preserves existing itinerary')
@@ -109,7 +117,7 @@ api.exportJson()
 assert.equal(downloads.length,1)
 api.invalidateCurrent()
 api.confirmPreview()
-assert.equal(events.length,3,'stale preview confirmation does not alter the map')
+assert.equal(events.length,5,'stale preview confirmation does not alter the map')
 assert.equal(api.result.value, null, 'manual map modification invalidates stale AI plan')
 assert.equal(api.preview.value, null, 'manual edits invalidate unconfirmed previews')
 assert.match(api.notice.value, /旧AI方案已失效/)
