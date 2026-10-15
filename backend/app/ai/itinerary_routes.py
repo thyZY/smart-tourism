@@ -6,6 +6,7 @@ from .itinerary_geo_service import fetch_candidates, valhalla_route
 from .itinerary_planner import ItineraryPlanner
 from .itinerary_contract import attach_contract
 from .road_optimizer import plan_verified_route
+from .itinerary_edit import edit_stop_ids
 
 router = APIRouter(prefix="/api/ai/itinerary", tags=["AI Itinerary"])
 
@@ -110,3 +111,34 @@ def calculate_road(request: RoadCalculationRequest):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail="道路服务调用失败，原直线预览保持不变") from exc
+
+
+class EditPreviewRequest(BaseModel):
+    place_ids: list[int] = Field(..., min_length=2, max_length=6)
+    instruction: str = Field(..., min_length=1, max_length=160)
+    travel_mode: str = Field(default="pedestrian", pattern="^(pedestrian|bicycle|auto)$")
+
+
+@router.post("/edit-preview")
+def preview_itinerary_edit(request: EditPreviewRequest):
+    """Read-only edit preview; must be explicitly confirmed by browser."""
+    if any(type(i) is not int or i <= 0 for i in request.place_ids) or len(set(request.place_ids)) != len(request.place_ids):
+        raise HTTPException(status_code=422, detail="原行程景点ID无效或重复")
+    try:
+        current = {p["id"]: p for p in fetch_candidates()}
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="POI数据库暂不可用") from exc
+    if any(i not in current for i in request.place_ids):
+        raise HTTPException(status_code=409, detail="原行程包含已失效景点，无法修改")
+    try:
+        edited = edit_stop_ids([current[i] for i in request.place_ids], request.instruction)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    plan = restore_itinerary(RestoreRequest(
+        place_ids=edited["place_ids"], travel_mode=request.travel_mode))
+    plan["title"] = "待确认的行程修改预览"
+    plan["planning_method"] = "deterministic_edit_preview"
+    plan["edit_summary"] = edited
+    plan["warnings"].append("修改由明确的规则解析完成，尚未应用到地图；仅确认后生效")
+    plan["provenance"]["planning_method"] = "deterministic_edit_preview"
+    return plan
