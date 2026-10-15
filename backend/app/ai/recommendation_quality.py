@@ -5,11 +5,12 @@ satisfaction or evidence that the itinerary is feasible in the real world.
 """
 from collections import Counter
 
-from .itinerary_planner import _score
 
 
 def evaluate_recommendation(candidates, places, style, location, method):
     """Compute reproducible, non-subjective diagnostics using DB POI fields."""
+    from .itinerary_planner import _score
+
     candidate_ids = {p["id"] for p in candidates}
     selected_ids = [p["id"] for p in places]
     if not selected_ids or len(selected_ids) != len(set(selected_ids)):
