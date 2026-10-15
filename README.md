@@ -206,3 +206,74 @@ npm run dev -- --host localhost --port 5173 --strictPort
 6. 测试 AI 生成/恢复，及分析格网显示、隐藏与导出，不应改变原有业务数据。
 
 **自动 CI 只检查源结构、状态行为和构建，不代替真实浏览器像素级截图检查。**
+
+
+## WebGIS v1.3：聚合地图与交互式行程（开发分支）
+
+**开发分支**：`feat/webgis-v1.3-map-interaction-20261015`，
+基于已验收 UI 的 `feat/itinerary-management-20261014` 创建。
+未合并 `main`，且没有改变 `backend/.env`、数据库或 DeepSeek 调用方式。
+
+### 本轮功能
+
+- **POI 自动聚合**：MapLibre 使用新增的 `places-clusters` 聚合 GeoJSON 数据源；
+  zoom≤13 的密集景点缩并为蓝色数量圆点。点击聚合点自动放大到展开级别，
+  放大后恢复橙红色单景点标识，鼠标悬停显示景点名；
+- **原始数据不变**：`places` 原始 GeoJSON 数据源继续为热力图提供真实每个 POI，
+  搜索、附近、分类、收藏等路径同时更新聚合视图；不将聚合数量当作热度；
+- **已选 POI 高亮**：详情打开时增加橙色独立高亮环，地图和列表选中状态同步，
+  关闭详情可清除；
+- **行程站点序号**：从选择顺序生成独立的 `route-stops` GeoJSON 源，
+  蓝色 1/2/3… 圆点保留在地图上；左侧搜索结果显示「第 N 站」；
+  「我的路线」页可点对应景点以定位地图并打开详情；
+- **AI 工作台简化**：打开「AI 行程」标签即可填写旅游需求、生成并管理行程，
+  不再需要额外点「展开」；
+- **聚合图层不改变路线真实性**：蓝色序号代表停靠顺序；
+  只有 Valhalla 返回校验通过的路网才能标注道路距离，否则仍标记为直线预览。
+
+为栅格底图上的聚合数量和序号提供文字渲染，地图样式加载公开字体
+`https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf`。
+**字体 URL 与 OSM 瓦片服务需要可用的网络连接**；若聚合圆点可见但数字缺失，
+优先检查浏览器 F12 Network 里的字体请求状态。
+
+### 本地验收（在项目根目录，先确认 Git 没有未提交冲突）
+
+```powershell
+git fetch origin
+git switch -c feat/webgis-v1.3-map-interaction-20261015 --track origin/feat/webgis-v1.3-map-interaction-20261015
+# 若本地已有该分支，改为 git switch feat/webgis-v1.3-map-interaction-20261015
+node tests/frontend-workflow.mjs
+node tests/ai-itinerary-ui.mjs
+node tests/ui-layout.mjs
+cd frontend
+npm ci
+npm run build
+cd ..
+# 分别用两个窗口继续运行：
+.\start-backend.ps1
+.\start-frontend.ps1
+```
+
+浏览器打开 http://localhost:5173。建议顺序：
+
+1. 缩放 9–13：多个密集景点以**带数量的蓝色聚合圆点**显示，点击后放大；
+   缩放到 14–16：恢复单 POI 点击详情；
+2. 切换「点位/热力」：热力图仍基于原始 POI；切回点位聚合恢复；
+3. 左侧选择景点：右侧详情自动打开、地图橙色环高亮，关闭详情后环消失；
+4. 在详情里添加 3 个景点至「我的路线」：地图显示 1/2/3 蓝色数字、
+   左侧显示「第 N 站」；移除中间站后数字按最新顺序重排；
+5. 在「我的路线」中点击站点：地图定位对应点并跳转到详情；
+6. 「AI 行程」标签：不用第二次点击展开即可看到输入项。
+   无 Key 情况仍可本地规则生成；真实 DeepSeek 测试须用户主动配置本地 Key，
+   可能消耗 API 额度；
+7. 使用「附近 5km」「我的收藏」与任意类别过滤：不应出现旧聚合点残留，
+   如地图 POI 列表 0 个，聚合源也应同步清空；
+8. 在 Chrome DevTools 网络工具中检查 OSM 底图瓦片与文字 glyph 请求，
+   验证 1600×900 桌面界面和缩窄浏览器时无功能面板遮挡。
+
+`node tests/frontend-workflow.mjs` 包括聚合图层、点位/热力切换、
+来源同步、聚合点展开、选中高亮和路线编号回归。
+GitHub CI 是代码层验收，不等于 Windows 真实地图或字体 CDN 已实测。
+
+**重要分支关系**：现有 `feat/poi-tourism-metadata-20261008`（含更多 AI 对话/
+Valhalla / 入口数据）仍与本分支独立；避免在 v1.3 审核前盲目合并它们。
