@@ -48,6 +48,13 @@ class ItineraryTests(unittest.TestCase):
         audit = result["recommendation_audit"]
         self.assertTrue(audit["score_is_selection_basis"])
         self.assertEqual(audit["candidate_count"], 3)
+        quality = result["quality_diagnostics"]
+        self.assertEqual(quality["selected_count"], 3)
+        self.assertEqual(quality["candidate_count"], 3)
+        self.assertEqual(quality["distinct_category_count"], 3)
+        self.assertEqual(quality["category_diversity_ratio"], 1.0)
+        self.assertEqual(quality["metric_type"], "descriptive_proxy_not_ground_truth")
+        self.assertTrue(quality["rule_is_actual_ranker"])
         self.assertIn("开放时间", audit["not_considered"])
         self.assertTrue(all(isinstance(stop["rule_score"], int) for stop in result["stops"]))
 
@@ -59,6 +66,7 @@ class ItineraryTests(unittest.TestCase):
         self.assertEqual([s["id"] for s in result["stops"]], [2, 1, 3])
         self.assertEqual(result["planning_method"], "deepseek_ranked_verified_ids")
         self.assertFalse(result["recommendation_audit"]["score_is_selection_basis"])
+        self.assertFalse(result["quality_diagnostics"]["rule_is_actual_ranker"])
         self.assertIn("system_prompt", client.calls[0])
         self.assertIn("user_prompt", client.calls[0])
         self.assertNotIn("messages", client.calls[0])
