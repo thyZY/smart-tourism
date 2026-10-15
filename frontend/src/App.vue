@@ -31,6 +31,26 @@ const routeKind = ref('straight_line_preview')
 const roadTravelMinutes = ref(null)
 const selectedTheme = ref(null)
 const selectedCulturalLine = ref(null)
+const showExplorer = ref(true)
+const showWorkspace = ref(true)
+const activeWorkspaceTab = ref('ai')
+const workspaceTabs = [
+  { id: 'ai', title: 'AI 行程' },
+  { id: 'route', title: '我的路线' },
+  { id: 'themes', title: '主题推荐' },
+  { id: 'culture', title: '文化线路' },
+  { id: 'statistics', title: '景点统计' },
+  { id: 'analysis', title: '空间分析' }
+]
+const toggleExplorer = () => {
+  showExplorer.value = !showExplorer.value
+  void nextTick(() => map?.resize?.())
+}
+const toggleWorkspace = () => {
+  showWorkspace.value = !showWorkspace.value
+  void nextTick(() => map?.resize?.())
+}
+
 const favoriteStorageKey = 'smart-tourism-favorites'
 const placeDetails = {
   1: {
@@ -473,6 +493,7 @@ const clearPopup = () => {
 }
 
 const closePlaceDetail = () => {
+  if (activeWorkspaceTab.value === 'detail') activeWorkspaceTab.value = 'route'
   selectedPlace.value = null
   selectedPlaceId.value = null
   highlightSelectedPlace(null)
@@ -480,6 +501,9 @@ const closePlaceDetail = () => {
 
 const openPlaceDetail = (feature) => {
   if (!feature?.properties?.id) return
+  activeWorkspaceTab.value = 'detail'
+  showWorkspace.value = true
+  void nextTick(() => map?.resize?.())
 
   selectedPlace.value = feature
   selectedPlaceId.value = feature.properties.id
@@ -862,406 +886,429 @@ onUnmounted(() => {
 })
 </script>
 
+
 <template>
-  <div class="map-wrapper">
-    <StatisticsPanel />
-    <RoutePanel
-      :places="selectedRoutePlaces"
-      :distance-km="routeDistanceKm"
-      :route-kind="routeKind"
-      :road-travel-minutes="roadTravelMinutes"
-      @clear="clearRoute"
-    />
-    <AIItineraryPanel ref="aiPanelRef" @apply="applyAiPlan" />
-    <PlaceDetailPanel
-      :place="selectedPlace"
-      :place-details="placeDetails"
-      :is-favorite="selectedPlace ? isFavorite(selectedPlace.properties.id) : false"
-      :is-in-route="selectedPlace ? selectedRoutePlaces.some((place) => place.properties.id === selectedPlace.properties.id) : false"
-      @close="closePlaceDetail"
-      @toggle-favorite="selectedPlace && toggleFavorite(selectedPlace)"
-      @toggle-route="selectedPlace && toggleRoutePlace(selectedPlace)"
-    />
-    <ThemePanel
-      :themes="themes"
-      :selected-theme="selectedTheme"
-      @select="selectTheme"
-    />
-    <CulturalLinePanel
-      :lines="culturalLines"
-      :selected-line="selectedCulturalLine"
-      @select="selectCulturalLine"
-      @clear="clearCulturalLine"
-    />
-    <SpatialAnalysisPanel
-      :grid-features="tourismGrid.features"
-      :visible="gridAnalysisVisible"
-      @show="setGridAnalysisVisible(true)"
-      @hide="setGridAnalysisVisible(false)"
-      @focus-grid="focusAnalysisGrid"
-      @export-grid="downloadAnalysisGrid"
-    />
+  <div
+    class="map-wrapper"
+    :class="{
+      'explorer-hidden': !showExplorer,
+      'workspace-hidden': !showWorkspace
+    }"
+  >
+    <header class="app-toolbar" aria-label="智慧文旅地图工具栏">
+      <div class="toolbar-main">
+        <div class="brand-mark">
+          <span class="brand-icon" aria-hidden="true">◎</span>
+          <div class="brand-copy">
+            <strong>南京智慧文旅</strong>
+            <small>AI × GIS 探索工作台</small>
+          </div>
+        </div>
+        <button
+          type="button"
+          class="toolbar-button panel-toggle"
+          :aria-expanded="showExplorer"
+          aria-controls="explorer-panel"
+          @click="toggleExplorer"
+        >{{ showExplorer ? '隐藏景点' : '景点列表' }}</button>
 
-    <div class="map-display-control" role="group" aria-label="地图显示模式">
-      <button
-        type="button"
-        :class="{ active: mapDisplayMode === 'points' }"
-        :disabled="!mapReady"
-        @click="setMapDisplayMode('points')"
-      >
-        点位
-      </button>
-      <button
-        type="button"
-        :class="{ active: mapDisplayMode === 'heatmap' }"
-        :disabled="!mapReady"
-        @click="setMapDisplayMode('heatmap')"
-      >
-        热力图
-      </button>
-    </div>
+        <div class="toolbar-search">
+          <input
+            v-model="searchQuery"
+            class="search-box"
+            aria-label="搜索景点"
+            :disabled="loading || !mapReady"
+            type="search"
+            placeholder="搜索景点名称或类型"
+            @keyup.enter="searchPlaces"
+          />
+          <button class="toolbar-button search-submit" type="button"
+            :disabled="loading || !mapReady" @click="searchPlaces">搜索</button>
+        </div>
 
-    <input
-      v-model="searchQuery"
-      class="search-box"
-      aria-label="搜索景点"
-      :disabled="loading || !mapReady"
-      type="text"
-      placeholder="搜索景点..."
-      @keyup.enter="searchPlaces"
-    />
+        <button
+          type="button"
+          class="toolbar-button nearby-button"
+          :disabled="loading || !mapReady"
+          @click="searchNearbyPlaces"
+        >{{ loading ? '查询中…' : '附近 5 km' }}</button>
 
-    <button
-      class="nearby-button"
-      :disabled="loading || !mapReady"
-      @click="searchNearbyPlaces"
+        <button
+          type="button"
+          class="toolbar-button favorites-button"
+          :class="{ active: showFavoritesOnly }"
+          :disabled="loading || !mapReady"
+          @click="showFavoritePlaces"
+        >我的收藏 ({{ favoritePlaceIds.length }})</button>
+
+        <button
+          type="button"
+          class="toolbar-button current-area-button"
+          :disabled="loading || !mapReady"
+          @click="searchCurrentArea"
+        >搜索当前区域</button>
+
+        <div class="toolbar-spacer"></div>
+        <div class="map-display-control" role="group" aria-label="地图显示模式">
+          <button
+            type="button"
+            :class="{ active: mapDisplayMode === 'points' }"
+            :disabled="!mapReady"
+            @click="setMapDisplayMode('points')"
+          >点位</button>
+          <button
+            type="button"
+            :class="{ active: mapDisplayMode === 'heatmap' }"
+            :disabled="!mapReady"
+            @click="setMapDisplayMode('heatmap')"
+          >热力</button>
+        </div>
+        <button
+          type="button"
+          class="toolbar-button panel-toggle"
+          :aria-expanded="showWorkspace"
+          aria-controls="workspace-panel"
+          @click="toggleWorkspace"
+        >{{ showWorkspace ? '隐藏工作台' : '打开工作台' }}</button>
+      </div>
+
+      <div class="category-filter" aria-label="景点类型筛选">
+        <button
+          type="button"
+          class="category-button"
+          :class="{ active: selectedCategory === '' }"
+          @click="selectCategory('')"
+        >全部类型</button>
+        <button
+          v-for="category in categories"
+          :key="category"
+          type="button"
+          class="category-button"
+          :class="{ active: selectedCategory === category }"
+          @click="selectCategory(category)"
+        >{{ category }}</button>
+      </div>
+    </header>
+
+    <aside
+      v-show="showExplorer"
+      id="explorer-panel"
+      class="explorer-panel"
+      aria-label="景点搜索结果"
     >
-      {{ loading ? '加载中…' : '附近 5km' }}
-    </button>
+      <div class="explorer-heading">
+        <div>
+          <h2>景点探索</h2>
+          <span>点击景点查看详情，在右侧添加至路线</span>
+        </div>
+        <span class="result-pill">{{ searchResults.length }}</span>
+      </div>
+      <div v-if="searchMessage" class="search-message" role="status">
+        {{ searchMessage }}
+      </div>
+      <div v-if="searchResults.length" class="result-list">
+        <div class="result-count">找到 {{ searchResults.length }} 个景点</div>
+        <div
+          v-for="feature in searchResults"
+          :key="feature.properties.id"
+          :data-place-id="feature.properties.id"
+          :class="[
+            'result-item',
+            {
+              'result-item-selected': selectedPlaceId === feature.properties.id,
+              'result-item-route-selected': selectedRoutePlaces.some(
+                (place) => place.properties.id === feature.properties.id
+              )
+            }
+          ]"
+          @click="focusResult(feature)"
+        >
+          <button
+            class="favorite-toggle"
+            type="button"
+            :aria-label="isFavorite(feature.properties.id) ? '取消收藏' : '收藏'"
+            :title="isFavorite(feature.properties.id) ? '取消收藏' : '收藏'"
+            @click.stop="toggleFavorite(feature)"
+          >{{ isFavorite(feature.properties.id) ? '★' : '☆' }}</button>
+          <strong>{{ feature.properties.name }}</strong>
+          <div>{{ feature.properties.category }}</div>
+        </div>
+      </div>
+      <div v-else-if="!loading && !searchMessage" class="explorer-empty">
+        暂无景点结果，可在上方搜索或浏览当前区域。
+      </div>
+      <div class="explorer-footnote">
+        <span class="online-dot" aria-hidden="true"></span>
+        结果来自后端 POI 数据库
+      </div>
+    </aside>
 
-    <button
-      class="favorites-button"
-      :class="{ active: showFavoritesOnly }"
-      :disabled="loading || !mapReady"
-      @click="showFavoritePlaces"
+    <main class="map-stage" aria-label="南京地图">
+      <div ref="mapContainer" class="map"></div>
+      <div v-if="selectedRoutePlaces.length >= 2" class="map-route-status" role="status">
+        <span class="map-status-dot" aria-hidden="true"></span>
+        {{ routeKind === 'valhalla'
+          ? '已验证的 Valhalla 道路线路'
+          : '直线串联预览 · 非实际导航路径' }}
+      </div>
+      <div class="map-attribution-note">地图 © OpenStreetMap · 空间结果以数据源为准</div>
+    </main>
+
+    <aside
+      v-show="showWorkspace"
+      id="workspace-panel"
+      class="workspace-panel"
+      aria-label="智慧文旅功能工作台"
     >
-      我的收藏 ({{ favoritePlaceIds.length }})
-    </button>
-
-    <button
-      @click="searchCurrentArea"
-      :disabled="loading || !mapReady"
-    >
-      {{ loading ? '加载中...' : '搜索当前区域' }}
-    </button>
-
-  <div class="category-filter">
-    <button
-      class="category-button"
-      :class="{ active: selectedCategory === '' }"
-      @click="selectCategory('')"
-    >
-      全部
-    </button>
-
-    <button
-      v-for="category in categories"
-      :key="category"
-      class="category-button"
-      :class="{ active: selectedCategory === category }"
-      @click="selectCategory(category)"
-    >
-      {{ category }}
-    </button>
-  </div>
-
-  <div v-if="searchMessage" class="search-message" role="status">
-    {{ searchMessage }}
-  </div>
-
-  <div v-if="searchResults.length" class="result-list">
-    <div class="result-count">
-      找到 {{ searchResults.length }} 个景点
-    </div>
-
-    <div
-      v-for="feature in searchResults"
-      :key="feature.properties.id"
-      :data-place-id="feature.properties.id"
-      :class="[
-        'result-item',
-        {
-          'result-item-selected': selectedPlaceId === feature.properties.id,
-          'result-item-route-selected': selectedRoutePlaces.some(
-            (place) => place.properties.id === feature.properties.id
-          )
-        }
-      ]"
-      @click="focusResult(feature)"
-    >
-      <button
-        class="favorite-toggle"
-        type="button"
-        :aria-label="isFavorite(feature.properties.id) ? '取消收藏' : '收藏'"
-        :title="isFavorite(feature.properties.id) ? '取消收藏' : '收藏'"
-        @click.stop="toggleFavorite(feature)"
-      >
-        {{ isFavorite(feature.properties.id) ? '★' : '☆' }}
-      </button>
-      <strong>{{ feature.properties.name }}</strong>
-      <div>{{ feature.properties.category }}</div>
-    </div>
-  </div>
-
-    <div ref="mapContainer" class="map"></div>
+      <div class="workspace-heading">
+        <div>
+          <h2>功能工作台</h2>
+          <span>选择功能标签，不再叠加遮挡地图</span>
+        </div>
+      </div>
+      <nav class="workspace-tabs" role="tablist" aria-label="选择工作台功能">
+        <button
+          v-for="tab in workspaceTabs"
+          :key="tab.id"
+          type="button"
+          role="tab"
+          :aria-selected="activeWorkspaceTab === tab.id"
+          :class="{ active: activeWorkspaceTab === tab.id }"
+          @click="activeWorkspaceTab = tab.id"
+        >{{ tab.title }}</button>
+        <button
+          v-if="selectedPlace"
+          type="button"
+          role="tab"
+          :aria-selected="activeWorkspaceTab === 'detail'"
+          :class="{ active: activeWorkspaceTab === 'detail' }"
+          @click="activeWorkspaceTab = 'detail'"
+        >景点详情</button>
+      </nav>
+      <div class="workspace-content">
+        <div v-show="activeWorkspaceTab === 'ai'" class="workspace-slot" role="tabpanel">
+          <AIItineraryPanel ref="aiPanelRef" @apply="applyAiPlan" />
+        </div>
+        <div v-show="activeWorkspaceTab === 'route'" class="workspace-slot" role="tabpanel">
+          <RoutePanel
+            :places="selectedRoutePlaces"
+            :distance-km="routeDistanceKm"
+            :route-kind="routeKind"
+            :road-travel-minutes="roadTravelMinutes"
+            @clear="clearRoute"
+          />
+        </div>
+        <div v-show="activeWorkspaceTab === 'themes'" class="workspace-slot" role="tabpanel">
+          <ThemePanel
+            :themes="themes"
+            :selected-theme="selectedTheme"
+            @select="selectTheme"
+          />
+        </div>
+        <div v-show="activeWorkspaceTab === 'culture'" class="workspace-slot" role="tabpanel">
+          <CulturalLinePanel
+            :lines="culturalLines"
+            :selected-line="selectedCulturalLine"
+            @select="selectCulturalLine"
+            @clear="clearCulturalLine"
+          />
+        </div>
+        <div v-show="activeWorkspaceTab === 'statistics'" class="workspace-slot" role="tabpanel">
+          <StatisticsPanel />
+        </div>
+        <div v-show="activeWorkspaceTab === 'analysis'" class="workspace-slot" role="tabpanel">
+          <SpatialAnalysisPanel
+            :grid-features="tourismGrid.features"
+            :visible="gridAnalysisVisible"
+            @show="setGridAnalysisVisible(true)"
+            @hide="setGridAnalysisVisible(false)"
+            @focus-grid="focusAnalysisGrid"
+            @export-grid="downloadAnalysisGrid"
+          />
+        </div>
+        <div v-show="activeWorkspaceTab === 'detail'" class="workspace-slot" role="tabpanel">
+          <PlaceDetailPanel
+            :place="selectedPlace"
+            :place-details="placeDetails"
+            :is-favorite="selectedPlace ? isFavorite(selectedPlace.properties.id) : false"
+            :is-in-route="selectedPlace ? selectedRoutePlaces.some((place) => place.properties.id === selectedPlace.properties.id) : false"
+            @close="closePlaceDetail"
+            @toggle-favorite="selectedPlace && toggleFavorite(selectedPlace)"
+            @toggle-route="selectedPlace && toggleRoutePlace(selectedPlace)"
+          />
+        </div>
+      </div>
+    </aside>
   </div>
 </template>
 
 <style>
-html,
-body,
-#app {
-  margin: 0;
-  width: 100%;
-  height: 100%;
-}
-
-body {
-  overflow: hidden;
-}
-
-.map {
-  width: 100vw;
-  height: 100vh;
-}
-
+:root { color-scheme: light; }
+html, body, #app { margin: 0; width: 100%; height: 100%; min-height: 0; }
+#app { max-width: none; border: 0; display: block; background: #f5f8fd; color: #233047; text-align: left; }
+body { overflow: hidden; font-family: Inter, 'Segoe UI', 'Microsoft YaHei', sans-serif; }
+.map-wrapper, .map-wrapper * { box-sizing: border-box; }
+.map-wrapper button, .map-wrapper input, .map-wrapper textarea,
+.map-wrapper select { font-family: inherit; }
+.map-wrapper button:focus-visible, .map-wrapper input:focus-visible,
+.map-wrapper select:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
 .map-wrapper {
-  position: relative;
-  width: 100vw;
-  height: 100vh;
+  --explorer-width: 288px;
+  --workspace-width: 358px;
+  display: grid;
+  grid-template-columns: var(--explorer-width) minmax(0,1fr) var(--workspace-width);
+  grid-template-rows: auto minmax(0,1fr);
+  width: 100%; height: 100dvh; min-height: 0; overflow: hidden;
+  background: #e9f0f7;
 }
-
-.search-box {
-  position: absolute;
-  top: 20px;
-  left: 20px;
-  z-index: 10;
-
-  width: 260px;
-  padding: 10px 14px;
-
-  font-size: 16px;
-  color: #222;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  background: white;
-  outline: none;
+.map-wrapper.explorer-hidden { --explorer-width: 0px; }
+.map-wrapper.workspace-hidden { --workspace-width: 0px; }
+.app-toolbar {
+  grid-column: 1 / -1; grid-row: 1;
+  z-index: 20; min-width: 0;
+  background: #fff; border-bottom: 1px solid #e1e8f1;
+  box-shadow: 0 2px 12px rgb(16 35 62 / 7%);
 }
-
-.search-box::placeholder {
-  color: #777;
+.toolbar-main {
+  display: flex; align-items: center; gap: 9px;
+  min-height: 64px; padding: 10px 16px;
 }
-
-.search-message {
-  position: absolute;
-  top: 70px;
-  left: 20px;
-  z-index: 10;
-
-  width: 260px;
-  padding: 8px 14px;
-
-  font-size: 14px;
-  color: #b42318;
-  background: white;
-  border: 1px solid #f0b8b8;
-  border-radius: 6px;
+.brand-mark { display:flex;align-items:center;gap:9px;min-width:153px;flex-shrink:0; }
+.brand-icon { display:grid;place-items:center;width:35px;height:35px;border-radius:11px;color:#fff;
+ background: linear-gradient(145deg,#2563eb,#0f766e);font-size:25px;font-weight:700; }
+.brand-copy { display:flex;flex-direction:column;white-space:nowrap;line-height:1.3;gap:3px; }
+.brand-copy strong { font-size:14px;letter-spacing:.1px;color:#142c52; }
+.brand-copy small { font-size:10px;color:#64748b; }
+.toolbar-button {
+  border:1px solid #d6e0ec;border-radius:8px;color:#34445d;background:#fff;
+  white-space:nowrap;padding:9px 11px;min-height:36px;font-size:12px;cursor:pointer;
+  transition: background .15s, border-color .15s;
 }
-
-.nearby-button {
-  position: absolute;
-  top: 20px;
-  left: 330px;
-  z-index: 10;
-
-  padding: 10px 16px;
-  font-size: 16px;
-  color: #222;
-
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  background: white;
-  cursor: pointer;
+.toolbar-button:hover:not(:disabled) { background:#eff5ff;border-color:#92b3eb; }
+.toolbar-button:disabled {opacity:.48;cursor:not-allowed;}
+.toolbar-button.active,.search-submit { color:#1453bd;border-color:#bad3fa;background:#eaf2ff; }
+.toolbar-search { display:flex;min-width:150px;max-width:410px;flex:1 1 220px;gap:6px; }
+.search-box { min-width:0;width:100%;height:36px;box-sizing:border-box;padding:7px 10px;
+  border:1px solid #cbd5e1;border-radius:8px;color:#1f2937;background:#fff;font-size:13px;outline:none; }
+.search-box:focus {border-color:#438ae2;box-shadow:0 0 0 3px #cce5ff99;}
+.toolbar-spacer {flex:1 1 auto;min-width:0;}
+.map-display-control {display:flex;align-items:center;border:1px solid #d6e0ec;
+  border-radius:8px;overflow:hidden;background:#fff;flex-shrink:0;}
+.map-display-control button {padding:9px 11px;border:0;cursor:pointer;font-size:12px;
+  color:#334155;background:#fff;min-height:34px;}
+.map-display-control button + button {border-left:1px solid #e1e8f1;}
+.map-display-control button.active {background:#dceafe;color:#174da3;font-weight:700;}
+.map-display-control button:disabled {opacity:.5;cursor:not-allowed;}
+.category-filter {display:flex;gap:7px;align-items:center;min-width:0;overflow-x:auto;
+  padding:0 16px 10px;scrollbar-width:thin;}
+.category-button {flex-shrink:0;padding:6px 11px;border-radius:20px;border:1px solid #e1e8f1;
+  background:#f6f8fc;color:#526178;font-size:12px;cursor:pointer;white-space:nowrap;}
+.category-button.active {color:#185cbb;border-color:#91b8f4;background:#eaf3ff;font-weight:700;}
+.category-button:hover {background:#e8f0fb;}
+.explorer-panel {grid-column:1;grid-row:2;display:flex;flex-direction:column;min-width:0;min-height:0;
+  overflow:hidden;background:#fff;border-right:1px solid #dfe6ef;}
+.explorer-heading {display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:20px 16px 16px;border-bottom:1px solid #edf1f7;flex-shrink:0;}
+.explorer-heading h2,.workspace-heading h2 {font-size:17px;letter-spacing:0;margin:0 0 5px;color:#172e4d;font-weight:700;}
+.explorer-heading span,.workspace-heading span {font-size:11px;color:#718095;line-height:1.35;}
+.result-pill {background:#e8f1ff;color:#135aba!important;font-weight:700;min-width:32px;
+  height:28px;padding:4px 7px;text-align:center;border-radius:9px;font-size:13px!important;}
+.search-message {color:#9f1d2e;background:#fff7f7;border-bottom:1px solid #ffd8d8;
+  padding:10px 15px;flex-shrink:0;font-size:12px;line-height:1.5;}
+.result-list {display:block;flex:1 1 auto;min-height:0;overflow-y:auto;scrollbar-width:thin;background:#fff;}
+.result-count {padding:10px 16px;background:#f9fbfe;color:#53647f;font-size:12px;font-weight:600;
+  position:sticky;top:0;z-index:2;border-bottom:1px solid #edf1f7;}
+.result-item {position:relative;padding:13px 42px 13px 16px;border-bottom:1px solid #f0f3f8;cursor:pointer;}
+.result-item:hover {background:#f2f7ff;}
+.result-item:last-child {border-bottom:0;}
+.result-item strong {display:block;color:#253a53;font-size:13px;line-height:1.4;}
+.result-item > div {margin-top:4px;font-size:12px;color:#8492a6;}
+.result-item-selected {background:#eaf2ff;}
+.result-item-route-selected {border-left:3px solid #2563eb;padding-left:13px;}
+.favorite-toggle {position:absolute;right:12px;top:12px;cursor:pointer;border:0;background:none;
+  font-size:22px;color:#e8a018;padding:2px;line-height:1;}
+.explorer-empty {padding:20px 16px;color:#66758d;font-size:13px;}
+.explorer-footnote {margin-top:auto;padding:13px 15px;border-top:1px solid #edf1f7;
+  flex-shrink:0;display:flex;align-items:center;gap:7px;color:#8290a2;font-size:11px;}
+.online-dot,.map-status-dot {display:inline-block;width:7px;height:7px;background:#1ca879;border-radius:50%;}
+.map-stage {grid-column:2;grid-row:2;position:relative;overflow:hidden;min-width:0;min-height:0;background:#e1e9ef;}
+.map {position:absolute;inset:0;width:100%;height:100%;}
+.map-route-status {position:absolute;left:18px;bottom:37px;z-index:5;display:flex;align-items:center;gap:8px;
+  max-width:calc(100% - 36px);font-size:11px;background:#ffffffed;border:1px solid #d9e1ec;border-radius:9px;
+  padding:8px 12px;box-shadow:0 2px 10px #0002;color:#31445e;pointer-events:none;}
+.map-attribution-note {position:absolute;bottom:8px;left:12px;background:#ffffffcc;pointer-events:none;
+  font-size:10px;color:#66758d;padding:4px 6px;border-radius:4px;}
+.workspace-panel {grid-column:3;grid-row:2;display:flex;flex-direction:column;min-height:0;min-width:0;
+  background:#fff;border-left:1px solid #dfe6ef;overflow:hidden;}
+.workspace-heading {flex-shrink:0;padding:20px 16px 13px;border-bottom:1px solid #edf1f7;}
+.workspace-tabs {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;flex-shrink:0;
+  padding:10px 10px 12px;border-bottom:1px solid #e6edf5;background:#f9fbfe;}
+.workspace-tabs button {padding:10px 3px;min-width:0;border:1px solid transparent;border-radius:7px;
+  color:#58677b;background:transparent;cursor:pointer;font-size:12px;white-space:nowrap;}
+.workspace-tabs button:hover {background:#eef4fc;}
+.workspace-tabs button.active,.workspace-tabs button[aria-selected="true"] {
+  background:#e5efff;border-color:#bad2f6;color:#1e56a4;font-weight:700;}
+.workspace-content {flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:0 12px 16px;
+  scrollbar-width:thin;overscroll-behavior:contain;}
+.workspace-slot {display:block;min-width:0;padding:6px 0;}
+/* Existing child components used map-wide absolute positioning. Inside a workspace slot
+   they must participate in normal document flow, not paint over other features. */
+.workspace-slot > .ai-itinerary-panel,
+.workspace-slot > .route-panel,
+.workspace-slot > .theme-panel,
+.workspace-slot > .cultural-line-panel,
+.workspace-slot > .statistics-panel,
+.workspace-slot > .place-detail-panel,
+.workspace-slot > .spatial-analysis-panel {
+  position:static;width:100%;max-width:100%;height:auto;min-height:0;top:auto;right:auto;bottom:auto;left:auto;
+  z-index:auto;margin:0;box-shadow:none;box-sizing:border-box;border:0;border-radius:0;
+  background:transparent;overflow:visible;color:#233047;
 }
-
-.nearby-button:disabled {
-  cursor: wait;
-  opacity: 0.65;
+.workspace-slot > .statistics-panel.collapsed {width:100%;}
+.workspace-slot .ai-content {max-height:none;min-height:0;overflow:visible;padding:13px 4px;}
+.workspace-slot .ai-toggle {border-radius:8px;}
+.workspace-slot .ai-itinerary-panel {font-size:13px;}
+.workspace-slot .route-panel-header {align-items:flex-start;}
+.workspace-slot .route-panel-header h2 {min-width:0;}
+.workspace-slot .route-panel-header button {flex-shrink:0;}
+.workspace-slot .theme-card,.workspace-slot .cultural-line-card {width:100%;}
+.workspace-slot .spatial-analysis-panel {padding:12px 2px;}
+.workspace-slot .place-detail-panel {padding:10px 2px;}
+.workspace-slot .statistics-panel {padding:8px 0;}
+.maplibregl-popup-content {color:#263347;text-align:left;}
+@media(max-width:1370px){
+  .map-wrapper{--explorer-width:252px;--workspace-width:320px;}
+  .toolbar-main{gap:6px;padding:9px 12px;}
+  .brand-mark{min-width:126px;gap:6px;}
+  .brand-icon{width:30px;height:30px;font-size:22px;}
+  .brand-copy strong{font-size:12px;}
+  .brand-copy small{font-size:9px;}
+  .toolbar-button {padding:8px 8px;font-size:11px;}
 }
-
-.maplibregl-popup-content {
-  color: #222;
-  text-align: left;
+@media(max-width:1020px){
+  body{overflow:auto;}
+  .map-wrapper,.map-wrapper.explorer-hidden,.map-wrapper.workspace-hidden{
+    display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(36vh,1fr) auto auto;
+    height:100dvh;min-height:640px;overflow-y:auto;
+  }
+  .app-toolbar{grid-column:1;grid-row:1;}
+  .toolbar-main{flex-wrap:wrap;row-gap:8px;}
+  .toolbar-search{flex:1 1 220px;}
+  .map-stage{grid-column:1;grid-row:2;min-height:36vh;}
+  .explorer-panel{grid-column:1;grid-row:3;min-height:0;max-height:260px;border:0;border-top:1px solid #e0e6f0;}
+  .result-list{max-height:170px;min-height:45px;}
+  .workspace-panel{grid-column:1;grid-row:4;min-height:250px;max-height:480px;border:0;border-top:1px solid #e0e6f0;}
+  .workspace-content{overflow-y:auto;max-height:350px;}
 }
-
-.nearby-button:hover {
-  background: #f5f5f5;
-}
-
-.favorites-button {
-  position: absolute;
-  top: 20px;
-  left: 460px;
-  z-index: 10;
-  padding: 10px 16px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  background: white;
-  color: #222;
-  cursor: pointer;
-}
-
-.favorites-button:hover:not(:disabled),
-.favorites-button.active {
-  background: #e8f0fe;
-  border-color: #8ab4f8;
-}
-
-.favorites-button:disabled {
-  cursor: wait;
-  opacity: 0.65;
-}
-
-.map-display-control {
-  position: absolute;
-  top: 20px;
-  right: 70px;
-  z-index: 10;
-
-  display: flex;
-  overflow: hidden;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  background: white;
-}
-
-.map-display-control button {
-  padding: 8px 10px;
-  border: 0;
-  border-right: 1px solid #ddd;
-  background: white;
-  color: #333;
-  cursor: pointer;
-}
-
-.map-display-control button:last-child {
-  border-right: 0;
-}
-
-.map-display-control button:hover:not(:disabled) {
-  background: #f5f5f5;
-}
-
-.map-display-control button.active {
-  background: #e8f0fe;
-  color: #0b57d0;
-  font-weight: 600;
-}
-
-.map-display-control button:disabled {
-  cursor: wait;
-  opacity: 0.65;
-}
-
-.result-list {
-  position: absolute;
-  top: 110px;
-  left: 20px;
-  z-index: 10;
-
-  width: 280px;
-  max-height: 420px;
-  overflow-y: auto;
-
-  background: white;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-}
-
-.result-count {
-  padding: 10px 12px;
-  font-weight: bold;
-  border-bottom: 1px solid #eee;
-}
-
-.result-item {
-  position: relative;
-  padding: 10px 12px;
-  border-bottom: 1px solid #eee;
-  cursor: pointer;
-}
-
-.result-item:hover {
-  background: #f5f5f5;
-}
-
-.result-item:last-child {
-  border-bottom: none;
-}
-
-.result-item-selected {
-  background: #e8f0fe;
-  font-weight: 600;
-}
-
-.result-item-route-selected {
-  border-left: 4px solid #2563eb;
-  padding-left: 8px;
-}
-
-.favorite-toggle {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: #d97706;
-  cursor: pointer;
-  font-size: 24px;
-  line-height: 1;
-}
-
-.category-filter {
-  position: absolute;
-  top: 70px;
-  left: 20px;
-  z-index: 10;
-
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-
-  width: 740px;
-}
-
-.category-button {
-  padding: 6px 10px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  background: white;
-  color: #333;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.category-button:hover {
-  background: #f5f5f5;
-}
-
-.category-button.active {
-  background: #e8f0fe;
-  border-color: #8ab4f8;
-  font-weight: 600;
+@media(max-width:600px){
+  .brand-mark{min-width:auto;}
+  .brand-copy small{display:none;}
+  .panel-toggle{padding:7px;}
+  .toolbar-main{padding:9px 10px;}
+  .toolbar-spacer{display:none;}
+  .toolbar-search{order:3;flex-basis:100%;max-width:none;}
+  .category-filter{padding:0 10px 9px;}
+  .workspace-tabs{grid-template-columns:repeat(3,minmax(0,1fr));}
+  .workspace-heading,.explorer-heading{padding:12px;}
 }
 </style>
