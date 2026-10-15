@@ -31,12 +31,12 @@ const detail = computed(() => {
 
     <template v-if="detail">
       <p class="place-detail-intro">{{ detail.intro }}</p>
-      <dl class="place-detail-meta">
-        <div><dt>开放时间</dt><dd>{{ detail.opening }}</dd></div>
-        <div><dt>推荐指数</dt><dd>{{ detail.rating }}</dd></div>
+      <dl v-if="detail.opening_verified || detail.rating_verified" class="place-detail-meta">
+        <div v-if="detail.opening_verified"><dt>开放时间（已核实）</dt><dd>{{ detail.opening }}</dd></div>
+        <div v-if="detail.rating_verified"><dt>评分（已核实）</dt><dd>{{ detail.rating }}</dd></div>
       </dl>
     </template>
-    <p v-else class="place-detail-empty">暂无详细介绍</p>
+    <p v-else class="place-detail-empty">暂无经核实的景点介绍、开放时间或评分。请以景区官方渠道为准。</p>
 
     <div class="place-detail-actions">
       <button type="button" :class="{ active: isFavorite }" @click="$emit('toggle-favorite')">
