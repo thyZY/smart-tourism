@@ -1,4 +1,7 @@
 <script setup>
+import { ref } from 'vue'
+const selectedMode = ref('pedestrian')
+const optimizeOrder = ref(false)
 defineProps({
   places: {
     type: Array,
@@ -9,10 +12,14 @@ defineProps({
     required: true
   },
   routeKind: { type: String, default: 'straight_line_preview' },
-  roadTravelMinutes: { type: Number, default: null }
+  roadTravelMinutes: { type: Number, default: null },
+  roadMode: { type: String, default: 'pedestrian' },
+  roadLoading: { type: Boolean, default: false },
+  roadError: { type: String, default: '' },
+  roadOptimized: { type: Boolean, default: false }
 })
 
-defineEmits(['clear', 'focus-place'])
+defineEmits(['clear', 'focus-place', 'calculate-road'])
 </script>
 
 <template>
@@ -39,6 +46,26 @@ defineEmits(['clear', 'focus-place'])
         </button>
       </li>
     </ol>
+    <div class="route-road-controls">
+      <label>道路交通方式
+        <select v-model="selectedMode" :disabled="roadLoading">
+          <option value="pedestrian">步行</option>
+          <option value="bicycle">骑行</option>
+          <option value="auto">驾车</option>
+        </select>
+      </label>
+      <label v-if="places.length >= 3">
+        <input v-model="optimizeOrder" type="checkbox" :disabled="roadLoading" />
+        使用时间矩阵优化顺序（固定首站）
+      </label>
+      <button type="button" :disabled="roadLoading || places.length < 2 || places.length > 6"
+        @click="$emit('calculate-road', { mode: selectedMode, optimize: optimizeOrder && places.length >= 3 })">
+        {{ roadLoading ? '道路计算中…' : '计算实际道路路线' }}
+      </button>
+      <p v-if="roadError" role="alert">{{ roadError }}</p>
+      <p v-if="routeKind === 'valhalla'">当前道路模式：{{ {pedestrian:'步行',bicycle:'骑行',auto:'驾车'}[roadMode] }}{{ roadOptimized ? ' · 已按路网时间优化顺序' : '' }}</p>
+      <small>只连接已配置的本机 Valhalla；估算时间非实时导航。</small>
+    </div>
     <p class="route-distance">
       {{ routeKind === 'valhalla' ? 'Valhalla道路距离' : '景点间直线距离（非导航）' }}：
       {{ distanceKm.toFixed(1) }} km
@@ -123,4 +150,11 @@ h2 {
   border-top: 1px solid #eee;
   font-weight: 600;
 }
+.route-road-controls{display:grid;gap:8px;margin:12px 0;padding:10px;border:1px solid #d9e1ee;border-radius:8px}
+.route-road-controls label{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px}
+.route-road-controls select{padding:5px;border:1px solid #cbd5e1;border-radius:5px}
+.route-road-controls button{padding:8px;color:#164c9a;background:#eef5ff;border:1px solid #bad3fa;border-radius:6px;cursor:pointer}
+.route-road-controls button:disabled{opacity:.5;cursor:not-allowed}
+.route-road-controls small{color:#64748b;font-size:11px}
+.route-road-controls [role="alert"]{color:#b42318;font-size:12px}
 </style>
