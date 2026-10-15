@@ -396,15 +396,15 @@ const calculateSelectedRoad = async ({ mode, optimize }) => {
       return
     }
     if (optimize && Array.isArray(data.ordered_place_ids)) {
-      const places = new Map(selectedRoutePlaces.value.map(p => [p.properties.id, p]))
+      const places = selectedRoutePlaces.value
       if (data.ordered_place_ids.length !== ids.length ||
           new Set(data.ordered_place_ids).size !== ids.length ||
-          data.ordered_place_ids.some(id => !places.has(id))) {
+          data.ordered_place_ids.some(id => !places.some(p => p.properties.id === id))) {
         roadError.value = '道路服务返回的站点顺序无效'
         return
       }
       invalidateAiPanel()
-      selectedRoutePlaces.value = data.ordered_place_ids.map(id => places.get(id))
+      selectedRoutePlaces.value = data.ordered_place_ids.map(id => places.find(p => p.properties.id === id))
     }
     map?.getSource('route-line')?.setData(data.geojson)
     map?.getSource('route-stops')?.setData(routeStopCollection())
