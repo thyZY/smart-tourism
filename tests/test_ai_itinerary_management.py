@@ -45,6 +45,11 @@ class ItineraryTests(unittest.TestCase):
         self.assertEqual(result["route"]["status"], "unavailable")
         self.assertNotIn("distance_km", result["route"])
         self.assertTrue(all("reason" in s for s in result["stops"]))
+        audit = result["recommendation_audit"]
+        self.assertTrue(audit["score_is_selection_basis"])
+        self.assertEqual(audit["candidate_count"], 3)
+        self.assertIn("开放时间", audit["not_considered"])
+        self.assertTrue(all(isinstance(stop["rule_score"], int) for stop in result["stops"]))
 
     def test_fake_model_may_rank_ids_but_cannot_add_fiction(self):
         client = FakeClient({"place_ids": [9999, 2, 2, 1, 3]})
@@ -53,6 +58,7 @@ class ItineraryTests(unittest.TestCase):
                 "南京", candidates=SAMPLE, max_stops=3)
         self.assertEqual([s["id"] for s in result["stops"]], [2, 1, 3])
         self.assertEqual(result["planning_method"], "deepseek_ranked_verified_ids")
+        self.assertFalse(result["recommendation_audit"]["score_is_selection_basis"])
         self.assertIn("system_prompt", client.calls[0])
         self.assertIn("user_prompt", client.calls[0])
         self.assertNotIn("messages", client.calls[0])
