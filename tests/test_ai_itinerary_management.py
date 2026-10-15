@@ -76,6 +76,52 @@ class ItineraryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             decode_polyline6("~~~~")
 
+    def test_valhalla_mocked_service_decodes_real_polyline_shape(self):
+        import json
+        from app.ai import itinerary_geo_service as geo
+
+        def encode(points):
+            last_lat = last_lng = 0
+            out = []
+            for lng, lat in points:
+                yi = round(lat * 1e6)
+                xi = round(lng * 1e6)
+                for delta in (yi-last_lat, xi-last_lng):
+                    value = ~(delta << 1) if delta < 0 else delta << 1
+                    while value >= 0x20:
+                        out.append(chr((0x20 | (value & 0x1F)) + 63))
+                        value >>= 5
+                    out.append(chr(value + 63))
+                last_lat, last_lng = yi, xi
+            return "".join(out)
+
+        coords = [[118.7, 32.01], [118.705, 32.015], [118.71, 32.02]]
+        fake_response = json.dumps({"trip": {
+            "legs": [{"shape": encode(coords)}],
+            "summary": {"length": 2.3, "time": 300}
+        }}).encode("utf-8")
+
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *_): return False
+            def read(self, size): return fake_response[:size]
+
+        with patch.object(geo, "urlopen", return_value=Response()) as request:
+            route = geo.valhalla_route(
+                SAMPLE[:2], endpoint="http://127.0.0.1:8002")
+        self.assertEqual(route["status"], "verified_by_routing_service")
+        self.assertEqual(route["distance_km"], 2.3)
+        self.assertEqual(route["duration_minutes"], 5)
+        self.assertEqual(route["geojson"]["features"][0]["geometry"]["coordinates"], coords)
+        self.assertIn("/route", request.call_args.args[0].full_url)
+        self.assertEqual(request.call_args.args[0].get_method(), "POST")
+
+    def test_untrusted_remote_valhalla_endpoint_rejected(self):
+        route = valhalla_route(
+            SAMPLE[:2], endpoint="https://example.com/route")
+        self.assertEqual(route["status"], "unavailable")
+        self.assertNotIn("geojson", route)
+
     def test_http_missing_db_and_restore_validates_ids(self):
         app = FastAPI()
         app.include_router(itinerary_routes.router)
