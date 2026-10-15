@@ -85,6 +85,12 @@ async function generate(onlyPreview = false) {
     if (seq === requestSeq) loading.value = false
   }
 }
+function confirmPreview() {
+  // A preview is advisory until explicit confirmation. Never apply while a new
+  // request is running, after manual map edits or without an active plan.
+  if (loading.value || !result.value || !preview.value) return
+  apply(preview.value)
+}
 function save() {
   if (!result.value || ids(result.value).length < 2) return
   const item = {
@@ -261,7 +267,7 @@ function printReport() {
       <div v-if="preview" class="ai-preview">
         <h4>待确认优化方案</h4>
         <p>{{ preview.stops.map(s => s.name).join(' → ') }}</p>
-        <button type="button" @click="apply(preview)">确认替换当前行程</button>
+        <button type="button"  :disabled="loading" @click="confirmPreview">确认替换当前行程</button>
         <button type="button" @click="preview = null">放弃调整</button>
       </div>
       <div class="ai-saved">

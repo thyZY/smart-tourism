@@ -277,3 +277,40 @@ GitHub CI 是代码层验收，不等于 Windows 真实地图或字体 CDN 已�
 
 **重要分支关系**：现有 `feat/poi-tourism-metadata-20261008`（含更多 AI 对话/
 Valhalla / 入口数据）仍与本分支独立；避免在 v1.3 审核前盲目合并它们。
+
+
+## v1.7 业务流程验收（开发分支）
+
+本阶段优先验证“搜索 → 生成 → 预览确认 → 保存 → 恢复 → 导出”的状态边界。
+GitHub Actions 运行所有 `tests/test_*.py` 后端离线单元测试，
+及现有前端模拟交互与 Vue 构建。**模拟测试并非真实浏览器端到端测试**。
+
+在 Windows 项目根目录运行：
+
+```powershell
+git fetch origin
+git switch feat/v1.7-journey-acceptance-20261015
+git pull --ff-only origin feat/v1.7-journey-acceptance-20261015
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py" -v
+node tests/frontend-workflow.mjs
+node tests/ai-itinerary-ui.mjs
+node tests/ui-layout.mjs
+cd frontend
+npm ci
+npm run build
+cd ..
+```
+
+人工业务流程（启动 PostgreSQL、后端和前端后进行）：
+
+1. 输入南京景点关键词搜索并打开详情；核实地图选中高亮和数据库 POI 名称一致。
+2. 进入 AI 行程工作台，使用无 Key 规则回退生成路线，确认景点 ID 均来自数据库，地图提示直线非导航。
+3. 展开推荐依据及质量诊断；确认规则分仅在规则排序时用于解释，类别多样性不宣称准确率。
+4. 点击“减少景点并预览”，确认原地图未被预览替换；点击“确认替换当前行程”后才生效，重复确认不应重复应用。
+5. 保存行程并刷新浏览器，恢复后检查站点顺序与当前数据库内容；断开后端测试失败时原地图不变。
+6. 导出 JSON 和浏览器打印报告；无已验证 Valhalla 道路时，GeoJSON 道路导出按钮必须禁用。
+7. 手动修改地图路线使原 AI 方案失效；未确认预览不得再覆盖当前路线。
+8. 切换窄屏、点位/热力、景点列表/工作台，检查路线编号、地图图层和滚动布局。
+9. 可选：仅用户主动配置私有 DeepSeek Key、VALHALLA_URL 并同意调用成本后，实测模型排序和真实道路服务，不得将公共服务成功率视为生产级保障。
+
+所有真实 PostGIS、字体网络、Valhalla、浏览器打印以及交互截图仍需本机人工检查；CI 成功不代表它们自动通过。
