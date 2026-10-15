@@ -271,11 +271,11 @@ function printReport() {
 <template>
   <section class="ai-itinerary-panel" aria-label="AI 行程工作台">
     <div class="ai-panel-intro">
-      <h3>AI 行程规划</h3>
+      <div class="ai-title-row"><span class="ai-title-icon" aria-hidden="true">✦</span><div><h3>AI 行程规划</h3><span class="ai-title-kicker">SMART ITINERARY</span></div></div>
       <p>从真实 PostGIS 景点中选择与排序，生成后可保存、修改及导出报告。</p>
     </div>
     <div class="ai-content">
-      <h4 class="ai-field-title">旅行条件</h4>
+      <h4 class="ai-field-title"><span class="ai-section-index">01</span> 旅行条件</h4>
       <label>旅行需求
         <textarea v-model="request.location" maxlength="160" rows="2"
           placeholder="南京一日历史文化，老人同行，少步行" />
@@ -326,12 +326,12 @@ function printReport() {
           </select>
         </label>
       </div>
-      <button type="button" :disabled="loading" @click="generate(false)">
+      <button class="ai-primary-action" type="button" :disabled="loading" @click="generate(false)">
         {{ loading ? '生成中…' : '生成并加载到地图' }}
       </button>
       <p v-if="error" role="alert" class="ai-error">{{ error }}</p>
       <p v-if="notice" role="status" class="ai-notice">{{ notice }}</p>
-      <div v-if="result" class="ai-results">
+      <div v-if="result" class="ai-results"><div class="ai-card-eyebrow"><span class="ai-status-dot"></span> 当前行程 · 数据库景点</div>
         <h4>{{ result.title }}</h4>
         <p>{{ result.summary }}</p>
         <p v-if="result.excluded_place_ids?.length">已排除景点 ID：{{ result.excluded_place_ids.join('、') }}</p>
@@ -358,11 +358,11 @@ function printReport() {
           Valhalla道路：{{ result.route.distance_km }} km，约 {{ result.route.duration_minutes }} 分钟
         </p>
         <p v-else>道路未核验；地图直线只作景点顺序预览。</p>
-        <div class="ai-edit-workspace">
+        <div class="ai-edit-workspace"><h4><span class="ai-section-index">02</span> 修改当前行程</h4>
           <label>按要求修改当前行程（仅生成预览）
             <input v-model="editInstruction" maxlength="160" placeholder="例如：删除中山陵；或将夫子庙调整到第2站" />
           </label>
-          <button type="button" :disabled="loading" @click="requestEditPreview">生成修改预览</button>
+          <button class="ai-secondary-action" type="button" :disabled="loading" @click="requestEditPreview">生成修改预览</button>
           <small>优先使用规则；配置 DeepSeek API Key 后可解析更灵活的删除或调整站次意图。每轮基于当前已确认行程，不会擅自修改。</small>
         </div>
         <div class="ai-actions">
@@ -373,15 +373,15 @@ function printReport() {
           <button type="button" @click="printReport">打印报告 / 另存 PDF</button>
         </div>
       </div>
-      <div v-if="preview" class="ai-preview">
+      <div v-if="preview" class="ai-preview" role="region" aria-label="待确认的行程修改">
         <h4>待确认优化方案</h4>
         <p>{{ preview.stops.map(s => s.name).join(' → ') }}</p>
         <p v-if="preview.edit_summary">来源：{{ preview.edit_summary.intent_source === 'deepseek_bounded_json' ? 'DeepSeek受限意图' : '确定性规则' }}；操作：{{ preview.edit_summary.operation === 'remove' ? '删除站点' : '调整顺序' }}；匹配景点ID：{{ preview.edit_summary.matched_place_id }}</p>
-        <button type="button"  :disabled="loading" @click="confirmPreview">确认替换当前行程</button>
+        <button class="ai-primary-action" type="button" :disabled="loading" @click="confirmPreview">确认替换当前行程</button>
         <button type="button" @click="preview = null">放弃调整</button>
       </div>
       <div class="ai-saved">
-        <h4>我的行程（仅当前浏览器）</h4>
+        <h4><span class="ai-section-index">03</span> 本地保存的行程</h4><small class="ai-muted">仅保存在当前浏览器，不同步到云端</small>
         <p v-if="!saved.length">暂无保存记录</p>
         <div v-for="item in saved" :key="item.id" class="ai-saved-item">
           <span>{{ item.title }} · {{ item.place_ids.length }}站</span>
@@ -427,4 +427,55 @@ function printReport() {
 .ai-exclusion-results label{display:flex;align-items:center;gap:6px;padding:3px}
 .ai-exclusion-results input[type="checkbox"]{width:auto;flex-shrink:0}
 @media(max-height:650px){.ai-content{max-height:38vh}}
+
+/* v2.0 visual refresh: design-only, no change to request or confirm flow */
+.ai-itinerary-panel{--ai-ink:#19304a;--ai-blue:#2563c9;--ai-line:#e3ebf5;--ai-subtle:#f5f8fe;font-family:system-ui,"Microsoft YaHei","PingFang SC",sans-serif;line-height:1.6}
+.ai-panel-intro{padding:17px 12px 15px;background:linear-gradient(125deg,#f0f6ff 0%,#fff 92%);border:1px solid #e5eefb;border-radius:12px}
+.ai-title-row{display:flex;align-items:center;gap:10px}
+.ai-title-row h3{margin:0;color:var(--ai-ink);font-size:17px;letter-spacing:-.2px}
+.ai-title-icon{display:grid;place-items:center;width:38px;height:38px;flex-shrink:0;border-radius:12px;color:white;font-size:22px;background:linear-gradient(140deg,#276add,#174995);box-shadow:0 6px 12px #1c54a626}
+.ai-title-kicker{color:#7691b6;font-weight:700;font-size:9px;letter-spacing:1.15px}
+.ai-panel-intro>p{margin-top:8px;font-size:12px;color:#566b87;line-height:1.65}
+.ai-field-title{display:flex;align-items:center;gap:7px;margin:14px 0 10px!important;color:var(--ai-ink)!important}
+.ai-section-index{display:inline-grid;place-items:center;min-width:25px;height:21px;padding:0 4px;border-radius:6px;background:#e8f0fe;color:#2962b4;font-size:10px;font-weight:800;letter-spacing:.2px}
+.ai-content{padding:12px 6px 16px;scrollbar-width:thin;scrollbar-color:#c4d5eb transparent}
+.ai-content label{font-size:12px;font-weight:600;color:#445c78;line-height:1.7}
+.ai-content textarea,.ai-content input,.ai-content select{min-height:35px;margin-top:4px;border:1px solid #cdd9e8;border-radius:8px;background:#fff;font-size:12px;transition:border-color .15s,box-shadow .15s}
+.ai-content textarea:focus-visible,.ai-content input:focus-visible,.ai-content select:focus-visible{outline:2px solid #83b6ff;outline-offset:1px;border-color:#2d73d7}
+.ai-fields{gap:10px 9px}
+.ai-content button{min-height:34px;padding:7px 10px;border-radius:8px;border-color:#c8d8ed;background:#f7faff;font-weight:600;transition:background .15s,border-color .15s}
+.ai-content button:hover:not(:disabled){background:#e8f1ff;border-color:#8bb4ee}
+.ai-content button:focus-visible{outline:2px solid #2e74d4;outline-offset:2px}
+.ai-content .ai-primary-action{color:#fff;background:linear-gradient(115deg,#2870df,#1954b4);border:1px solid #2365c4;box-shadow:0 3px 9px #1751a321}
+.ai-content .ai-primary-action:hover:not(:disabled){background:#1855af;border-color:#164a98}
+.ai-content .ai-secondary-action{color:#1a55a6;background:#eaf2ff;border-color:#b6cff2}
+.ai-error,.ai-notice{padding:9px 10px;border-radius:8px;font-size:12px}
+.ai-error{background:#fff2f2;border:1px solid #f5c9ca;color:#9d2738}
+.ai-notice{background:#eaf8ef;border:1px solid #bde7ca;color:#17693f}
+.ai-results,.ai-preview,.ai-saved{margin-top:15px;padding:14px 12px;border:1px solid var(--ai-line);border-radius:12px;background:#fff;box-shadow:0 2px 9px #233b5a08}
+.ai-results h4,.ai-preview h4,.ai-saved h4{font-size:14px!important;color:var(--ai-ink);line-height:1.45}
+.ai-card-eyebrow{display:flex;align-items:center;gap:7px;color:#39725c;font-size:11px;font-weight:700;letter-spacing:.2px}
+.ai-status-dot{width:7px;height:7px;border-radius:50%;background:#20ae78}
+.ai-results ol{padding-left:23px;line-height:1.85}
+.ai-results ol li{padding:5px 0;border-bottom:1px dashed #edf1f6;overflow-wrap:anywhere}
+.ai-results ol li:last-child{border-bottom:0}
+.ai-results ol small{display:block;color:#708098;font-size:11px}
+.ai-audit{border:1px solid #dfe9f7;background:#f7faff;border-radius:9px}
+.ai-audit summary{padding:3px 0;color:#2459a2}
+.ai-audit summary:focus-visible{outline:2px solid #2d73d7;outline-offset:2px}
+.ai-exclusion-picker{border:1px solid #e1eaf5;border-radius:10px;background:#fbfdff;padding:11px}
+.ai-exclusion-results{max-height:180px;scrollbar-width:thin}
+.ai-exclusion-results label{padding:6px 4px;border-radius:6px;font-weight:400}
+.ai-exclusion-results label:hover{background:#eef5ff}
+.ai-exclusion-results input[type="checkbox"]{min-height:auto;margin:0;accent-color:#2463c1}
+.ai-edit-workspace{gap:9px;padding:13px 11px;border:1px solid #d7e5f8;background:linear-gradient(145deg,#f4f8ff,#fff);border-radius:11px}
+.ai-edit-workspace h4{margin:0!important;display:flex;align-items:center;gap:7px}
+.ai-edit-workspace small,.ai-muted{color:#71849d;font-size:11px}
+.ai-preview{background:#f2f9f5;border-color:#cce8d9}
+.ai-preview h4{color:#1f6644}
+.ai-saved-item{padding:10px 0;display:flex;flex-wrap:wrap;gap:5px}
+.ai-saved-item span{flex-basis:100%;font-weight:600;color:#344a66}
+.ai-actions{display:flex;flex-wrap:wrap;gap:4px}
+.ai-actions button{flex:1 1 125px}
+@media(max-width:600px){.ai-panel-intro{padding:12px}.ai-content{padding:10px 4px}.ai-fields{grid-template-columns:1fr 1fr}}
 </style>
