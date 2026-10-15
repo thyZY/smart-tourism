@@ -52,18 +52,9 @@ const toggleWorkspace = () => {
 }
 
 const favoriteStorageKey = 'smart-tourism-favorites'
-const placeDetails = {
-  1: {
-    intro: '中国著名历史文化景区，馆藏丰富，适合深入了解南京历史。',
-    opening: '09:00-17:00',
-    rating: 4.8
-  },
-  2: {
-    intro: '秦淮河畔的传统文化街区，汇集民俗、美食与古建筑。',
-    opening: '全天开放',
-    rating: 4.7
-  }
-}
+// The POI table currently supplies name/category/address/geometry only.
+// Never present unverified opening hours, ratings or editorial copy as facts.
+const placeDetails = {}
 
 const readFavoritePlaceIds = () => {
   try {
