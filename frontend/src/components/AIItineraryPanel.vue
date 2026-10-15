@@ -16,7 +16,7 @@ const saved = ref(readSaved())
 const error = ref('')
 const notice = ref('')
 const loading = ref(false)
-const expanded = ref(false)
+const expanded = ref(true)
 let requestSeq = 0
 
 function validSnapshot(item) {
@@ -186,11 +186,12 @@ function printReport() {
 
 <template>
   <section class="ai-itinerary-panel" aria-label="AI 行程工作台">
-    <button type="button" class="ai-toggle" @click="expanded = !expanded">
-      {{ expanded ? '收起' : '展开' }} AI 行程 · 保存 · 报告
-    </button>
-    <div v-if="expanded" class="ai-content">
-      <h3>AI + PostGIS 真实景点行程</h3>
+    <div class="ai-panel-intro">
+      <h3>AI 行程规划</h3>
+      <p>从真实 PostGIS 景点中选择与排序，生成后可保存、修改及导出报告。</p>
+    </div>
+    <div class="ai-content">
+      <h4 class="ai-field-title">旅行条件</h4>
       <label>旅行需求
         <textarea v-model="request.location" maxlength="160" rows="2"
           placeholder="南京一日历史文化，老人同行，少步行" />
@@ -260,6 +261,10 @@ function printReport() {
 </template>
 
 <style scoped>
+.ai-panel-intro{padding:14px 7px 10px;border-bottom:1px solid #e1e8f2}
+.ai-panel-intro h3{margin:0 0 5px;color:#172e4d;font-size:16px}
+.ai-panel-intro p{margin:0;color:#69778c;font-size:12px;line-height:1.55}
+.ai-field-title{margin:4px 0 8px!important;color:#465a74;font-size:12px!important;font-weight:700}
 .ai-itinerary-panel{position:absolute;z-index:12;right:20px;top:112px;width:310px;max-width:calc(100vw - 40px);
   background:#fff;color:#253046;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 3px 14px #0002;
   text-align:left;font-size:13px}
