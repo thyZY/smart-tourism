@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from .itinerary_geo_service import fetch_candidates, valhalla_route
 from .itinerary_planner import ItineraryPlanner
+from .itinerary_contract import attach_contract
 
 router = APIRouter(prefix="/api/ai/itinerary", tags=["AI Itinerary"])
 
@@ -38,12 +39,13 @@ def generate_itinerary(request: ItineraryRequest):
     if len(candidates) < 2:
         raise HTTPException(status_code=422, detail="排除后剩余景点不足2个，请减少排除项")
     try:
-        return ItineraryPlanner().generate(
+        plan = ItineraryPlanner().generate(
             location=request.location, days=request.days, style=request.style,
             people=request.people, walking_limit=request.walking_limit,
             candidates=candidates, max_stops=request.max_stops,
             travel_mode=request.travel_mode, excluded_place_ids=excluded,
         )
+        return attach_contract(plan)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -73,7 +75,7 @@ def restore_itinerary(request: RestoreRequest):
         "reason": "已从当前数据库重新核实；游览条件请自行确认"
     } for p in places]
     route = valhalla_route(places, request.travel_mode)
-    return {
+    return attach_contract({
         "schema_version": 1, "title": "恢复的历史行程", "days": 1,
         "summary": "站点来自当前数据库；路网已重新请求（如配置）。",
         "planning_method": "restored_from_verified_ids",
@@ -87,4 +89,4 @@ def restore_itinerary(request: RestoreRequest):
         "warnings": [
             "已重新查询PostGIS景点和尝试请求道路；开放时间与通行性未核实"
         ]
-    }
+    })
