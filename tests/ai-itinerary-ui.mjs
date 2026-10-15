@@ -33,6 +33,7 @@ const context = vm.createContext({
   reactive: obj => obj,
   ref: value => ({ value }),
   defineEmits: () => (name, plan) => events.push({ name, plan }),
+  defineExpose: () => {},
   localStorage: {
     getItem(key) { return store.get(key) ?? null },
     setItem(key,value) { store.set(key,String(value)) }
@@ -51,7 +52,7 @@ const context = vm.createContext({
     write: s=>{printed+=s},close() {}},focus() {},print() {}
   }) }
 })
-vm.runInContext(script + '\nthis.testApi={request,result,preview,saved,error,notice,generate,apply,save,restore,removeSaved,exportRoad,exportJson,printReport};',context)
+vm.runInContext(script + '\nthis.testApi={request,result,preview,saved,error,notice,generate,apply,save,restore,removeSaved,invalidateCurrent,exportRoad,exportJson,printReport};',context)
 const api=context.testApi
 
 await api.generate()
@@ -84,9 +85,13 @@ assert.ok(printed.includes('&lt;img'),'print safely escapes imported title')
 assert.ok(!printed.includes('<img src=x onerror='))
 api.exportJson()
 assert.equal(downloads.length,1)
+api.invalidateCurrent()
+assert.equal(api.result.value, null, 'manual map modification invalidates stale AI plan')
+assert.equal(api.preview.value, null, 'manual edits invalidate unconfirmed previews')
+assert.match(api.notice.value, /旧AI方案已失效/)
 api.removeSaved('test-uuid')
 assert.equal(api.saved.value.length,0)
-assert.match(appSource, /<AIItineraryPanel @apply="applyAiPlan"/)
+assert.match(appSource, /<AIItineraryPanel ref="aiPanelRef" @apply="applyAiPlan"/)
 assert.match(appSource, /routeKind.value = 'valhalla'/)
 assert.match(routePanelSource, /景点间直线距离（非导航）/)
 assert.match(panelSource, /:disabled="result.route\?\.status !== 'verified_by_routing_service'"/)
