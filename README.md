@@ -360,3 +360,28 @@ cd ..
 当前 POI 几何坐标，可能被路网引擎吸附至不理想道路。此版本也不是实时导航，
 没有可靠的景区开放时间、拥堵、泊车或交通班次支持。
 GitHub CI 不能替代本机 PostgreSQL + Valhalla + 浏览器验证。
+
+
+## Gate C 兼容修复：公网 Valhalla 演示服务（PR 后续修复）
+
+当前此分支默认使用固定的 `https://valhalla1.openstreetmap.de`，
+无需本机 Docker、Valhalla 进程或南京 OSM 路网下载。
+通过服务器端 HTTPS POST 向固定服务请求 `/route` 和
+`/sources_to_targets`，不能由客户端传入任意 URL，
+且服务重定向被禁用，避免访问未经许可的目标。
+
+如已运行自建本机实例，可在私有 `backend/.env` 中设置：
+
+```dotenv
+VALHALLA_URL=http://127.0.0.1:8002
+```
+
+也可显式选择固定公网演示端点：
+
+```dotenv
+VALHALLA_URL=https://valhalla1.openstreetmap.de
+```
+
+如果本地配置了旧的无效 `VALHALLA_URL`，需移除该行或改成上面的固定值并重启后端。代码不会使用不受信任的第三方 URL。公网节点可能限流、报错、停机或调整服务政策；失败应保留原线路或直线预览，绝不把直线标注成道路。**不要高频批量测试，更不要将演示节点视作生产 SLA。** 使用服务前应确认当前公开服务的适用规则。
+
+此修复只调整路网来源白名单，不会恢复早期独立分支的入口审核功能。
