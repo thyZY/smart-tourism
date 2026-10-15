@@ -29,6 +29,10 @@ const aiPanelRef = ref(null)
 const invalidateAiPanel = () => aiPanelRef.value?.invalidateCurrent?.()
 const routeKind = ref('straight_line_preview')
 const roadTravelMinutes = ref(null)
+const roadMode = ref('pedestrian')
+const roadLoading = ref(false)
+const roadError = ref('')
+const roadOptimized = ref(false)
 const selectedTheme = ref(null)
 const selectedCulturalLine = ref(null)
 const showExplorer = ref(true)
@@ -339,6 +343,10 @@ const calculateDistanceKm = (from, to) => {
 }
 
 const updateRoute = () => {
+  roadRequestSequence += 1
+  roadLoading.value = false
+  roadError.value = ''
+  roadOptimized.value = false
   routeKind.value = 'straight_line_preview'
   roadTravelMinutes.value = null
   const routeCoordinates = selectedRoutePlaces.value
@@ -366,6 +374,50 @@ const updateRoute = () => {
 
   map?.getSource('route-line')?.setData(routeData)
   map?.getSource('route-stops')?.setData(routeStopCollection())
+}
+
+let roadRequestSequence = 0
+const calculateSelectedRoad = async ({ mode, optimize }) => {
+  if (roadLoading.value || selectedRoutePlaces.value.length < 2) return
+  const seq = ++roadRequestSequence
+  const ids = selectedRoutePlaces.value.map(p => p.properties.id)
+  roadLoading.value = true
+  roadError.value = ''
+  try {
+    const response = await axios.post('http://127.0.0.1:8010/api/ai/itinerary/road', {
+      place_ids: ids, travel_mode: mode, optimize
+    }, { timeout: 45000 })
+    if (seq !== roadRequestSequence ||
+        ids.join(',') !== selectedRoutePlaces.value.map(p => p.properties.id).join(',')) return
+    const data = response.data
+    if (data.status !== 'verified_by_routing_service' ||
+        data.geojson?.type !== 'FeatureCollection') {
+      roadError.value = data.message || '道路服务不可用，继续显示直线预览'
+      return
+    }
+    if (optimize && Array.isArray(data.ordered_place_ids)) {
+      const places = selectedRoutePlaces.value
+      if (data.ordered_place_ids.length !== ids.length ||
+          new Set(data.ordered_place_ids).size !== ids.length ||
+          data.ordered_place_ids.some(id => !places.some(p => p.properties.id === id))) {
+        roadError.value = '道路服务返回的站点顺序无效'
+        return
+      }
+      invalidateAiPanel()
+      selectedRoutePlaces.value = data.ordered_place_ids.map(id => places.find(p => p.properties.id === id))
+    }
+    map?.getSource('route-line')?.setData(data.geojson)
+    map?.getSource('route-stops')?.setData(routeStopCollection())
+    routeDistanceKm.value = data.distance_km
+    roadTravelMinutes.value = data.duration_minutes
+    routeKind.value = 'valhalla'
+    roadMode.value = mode
+    roadOptimized.value = Boolean(data.optimized)
+  } catch {
+    if (seq === roadRequestSequence) roadError.value = '道路计算失败，保留当前线路'
+  } finally {
+    if (seq === roadRequestSequence) roadLoading.value = false
+  }
 }
 
 const applyAiPlan = (plan) => {
@@ -1213,6 +1265,11 @@ onUnmounted(() => {
             :distance-km="routeDistanceKm"
             :route-kind="routeKind"
             :road-travel-minutes="roadTravelMinutes"
+            :road-mode="roadMode"
+            :road-loading="roadLoading"
+            :road-error="roadError"
+            :road-optimized="roadOptimized"
+            @calculate-road="calculateSelectedRoad"
             @clear="clearRoute"
             @focus-place="focusResult"
           />

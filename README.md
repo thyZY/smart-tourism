@@ -314,3 +314,49 @@ cd ..
 9. 可选：仅用户主动配置私有 DeepSeek Key、VALHALLA_URL 并同意调用成本后，实测模型排序和真实道路服务，不得将公共服务成功率视为生产级保障。
 
 所有真实 PostGIS、字体网络、Valhalla、浏览器打印以及交互截图仍需本机人工检查；CI 成功不代表它们自动通过。
+
+
+## v2.0 Gate C — 本地 Valhalla 道路计算验收
+
+分支：`feat/v2.0-gate-c-valhalla-20261015`（PR #14；仍未合并 main）。
+
+从 v2.0 Gate B 延续的行程功能中，在「我的路线」工作台新增「道路交通方式」与
+「计算实际道路路线」控制。**2–6 个景点**可选择步行、骑行、驾车；
+**3–6 个景点**可勾选使用 Valhalla 有向道路时间矩阵固定首站优化顺序。
+只有路网几何与距离、时间都通过校验，地图才显示 Valhalla 道路；
+未配置或调用失败保留原直线预览/当前线路，绝不把直线当道路。
+
+后端默认不访问公共 Valhalla。只有你本地已独立启动兼容服务时，
+在私有 `backend/.env` 中添加以下行（端口按真实服务修改）：
+
+```dotenv
+VALHALLA_URL=http://127.0.0.1:8002
+```
+
+随后重新启动后端。此配置仅允许本机 loopback HTTP 服务，路由请求会使用
+`/route`，矩阵请求会使用 `/sources_to_targets`。
+真实路网服务是否安装、地图数据是否包含南京道路，需用户自行在本机检查。
+
+离线测试与前端构建：
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py" -v
+node tests/frontend-workflow.mjs
+node tests/ai-itinerary-ui.mjs
+node tests/ui-layout.mjs
+cd frontend
+npm ci
+npm run build
+cd ..
+```
+
+人工检查：在「景点详情」添加 3–4 个 POI → 进入「我的路线」选择
+步行/骑行/驾车之一 → 计算实际道路 → 核对道路折线与对应公里/分钟；
+勾选优化后核实首站不变、后续站点数字与左侧列表对应。
+停止本机 Valhalla 再重试，必须明确显示失败并保留已有路径。
+切换 POI 后旧道路状态清除并恢复直线预览。
+
+这里没有迁移旧开发线人工审核的入口点元数据；本阶段寻路端点使用
+当前 POI 几何坐标，可能被路网引擎吸附至不理想道路。此版本也不是实时导航，
+没有可靠的景区开放时间、拥堵、泊车或交通班次支持。
+GitHub CI 不能替代本机 PostgreSQL + Valhalla + 浏览器验证。
