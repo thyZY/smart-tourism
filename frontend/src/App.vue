@@ -116,6 +116,11 @@ const buildTourismGrid = (features) => {
       const categories = [...new Set(cell.features.map(
         (feature) => feature.properties.category
       ))].filter(Boolean).sort()
+      const categoryCounts = {}
+      for (const place of cell.features) {
+        const name = place.properties.category || '未分类'
+        categoryCounts[name] = (categoryCounts[name] || 0) + 1
+      }
       const east = Number((cell.west + gridCellSize).toFixed(6))
       const north = Number((cell.south + gridCellSize).toFixed(6))
 
@@ -125,6 +130,7 @@ const buildTourismGrid = (features) => {
           grid_id: cell.gridId,
           poi_count: poiCount,
           category_count: categories.length,
+          category_counts: categoryCounts,
           categories,
           place_names: cell.features.map((feature) => feature.properties.name),
           richness_level: richnessLevel(poiCount, categories.length)
@@ -162,6 +168,31 @@ const setGridAnalysisVisible = (visible) => {
   map.setLayoutProperty('tourism-grid-fill', 'visibility', visible ? 'visible' : 'none')
   map.setLayoutProperty('tourism-grid-outline', 'visibility', visible ? 'visible' : 'none')
   if (!visible) clearGridPopup()
+}
+
+const focusAnalysisGrid = (gridId) => {
+  const feature = tourismGrid.value.features.find(
+    f => f.properties.grid_id === gridId
+  )
+  if (!feature || !mapReady.value) return
+  const ring = feature.geometry.coordinates?.[0]
+  if (!ring?.length) return
+  setGridAnalysisVisible(true)
+  const bounds = new LngLatBounds(ring[0], ring[2])
+  map?.fitBounds(bounds, { padding: 140, maxZoom: 15 })
+}
+
+const downloadAnalysisGrid = () => {
+  if (!tourismGrid.value.features.length) return
+  // Export only observed POI counts, never simulated crowd or equal-area figures.
+  const report = { ...tourismGrid.value, name: 'POI_degree_grid_observed_not_equal_area' }
+  const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/geo+json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'nanjing-poi-grid-observed.geojson'
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 const showGridPopup = (feature, lngLat) => {
@@ -862,6 +893,8 @@ onUnmounted(() => {
       :visible="gridAnalysisVisible"
       @show="setGridAnalysisVisible(true)"
       @hide="setGridAnalysisVisible(false)"
+      @focus-grid="focusAnalysisGrid"
+      @export-grid="downloadAnalysisGrid"
     />
 
     <div class="map-display-control" role="group" aria-label="地图显示模式">
