@@ -119,6 +119,17 @@ async function restore(item) {
     if (seq === requestSeq) loading.value = false
   }
 }
+function invalidateCurrent() {
+  // Main map was changed manually: previous AI output is no longer the active itinerary.
+  requestSeq += 1
+  loading.value = false
+  result.value = null
+  preview.value = null
+  error.value = ''
+  notice.value = '地图路线已被手动修改；旧AI方案已失效，请重新生成后再保存或导出'
+}
+defineExpose({ invalidateCurrent })
+
 function removeSaved(id) {
   saved.value = saved.value.filter(item => item.id !== id)
   persist()
