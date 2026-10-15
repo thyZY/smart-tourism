@@ -1489,4 +1489,16 @@ body { overflow: hidden; font-family: Inter, 'Segoe UI', 'Microsoft YaHei', sans
   .workspace-tabs{grid-template-columns:repeat(3,minmax(0,1fr));}
   .workspace-heading,.explorer-heading{padding:12px;}
 }
+
+/* v2.0 shell polish: preserve map and cluster logic; presentation only */
+.workspace-panel,.explorer-panel{background:#fcfdff}
+.workspace-heading,.explorer-heading{background:linear-gradient(180deg,#fff,#f8fbff)}
+.workspace-tabs{background:#f5f8fd;gap:6px}
+.workspace-tabs button{border-radius:9px;font-weight:600;transition:background .15s,color .15s}
+.workspace-tabs button.active,.workspace-tabs button[aria-selected="true"]{background:#fff;color:#1955ac;border-color:#b8d2f7;box-shadow:0 2px 7px #235ca412}
+.workspace-tabs button:focus-visible,.toolbar-button:focus-visible{outline:2px solid #3985e6;outline-offset:2px}
+.workspace-content{scrollbar-color:#ccdaea transparent}
+.workspace-slot{padding-top:10px}
+.maplibregl-popup-content{border-radius:9px;box-shadow:0 8px 24px #1b3c5f24}
+@media(prefers-reduced-motion:reduce){.workspace-tabs button{transition:none}}
 </style>
