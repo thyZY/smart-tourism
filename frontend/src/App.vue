@@ -25,6 +25,8 @@ const selectedCategory = ref('')
 const mapDisplayMode = ref('points')
 const selectedRoutePlaces = ref([])
 const routeDistanceKm = ref(0)
+const aiPanelRef = ref(null)
+const invalidateAiPanel = () => aiPanelRef.value?.invalidateCurrent?.()
 const routeKind = ref('straight_line_preview')
 const roadTravelMinutes = ref(null)
 const selectedTheme = ref(null)
@@ -369,6 +371,7 @@ const applyAiPlan = (plan) => {
 }
 
 const toggleRoutePlace = (feature) => {
+  invalidateAiPanel()
   const placeId = feature?.properties?.id
   if (placeId == null) return
 
@@ -388,6 +391,7 @@ const toggleRoutePlace = (feature) => {
 }
 
 const clearRoute = () => {
+  invalidateAiPanel()
   selectedRoutePlaces.value = []
   updateRoute()
 }
@@ -437,6 +441,7 @@ const exitThemeMode = () => {
 
 const selectTheme = (theme) => {
   if (!mapReady.value || loading.value || !theme) return
+  invalidateAiPanel()
 
   if (!selectedTheme.value) themeBaseFeatures = searchResults.value
 
@@ -867,7 +872,7 @@ onUnmounted(() => {
       :road-travel-minutes="roadTravelMinutes"
       @clear="clearRoute"
     />
-    <AIItineraryPanel @apply="applyAiPlan" />
+    <AIItineraryPanel ref="aiPanelRef" @apply="applyAiPlan" />
     <PlaceDetailPanel
       :place="selectedPlace"
       :place-details="placeDetails"
