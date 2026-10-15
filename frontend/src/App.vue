@@ -4,6 +4,7 @@ import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { Map, NavigationControl, Popup, LngLatBounds, setWorkerUrl } from 'maplibre-gl'
 import StatisticsPanel from './components/StatisticsPanel.vue'
 import RoutePanel from './components/RoutePanel.vue'
+import AIItineraryPanel from './components/AIItineraryPanel.vue'
 import PlaceDetailPanel from './components/PlaceDetailPanel.vue'
 import ThemePanel from './components/ThemePanel.vue'
 import CulturalLinePanel from './components/CulturalLinePanel.vue'
@@ -24,6 +25,8 @@ const selectedCategory = ref('')
 const mapDisplayMode = ref('points')
 const selectedRoutePlaces = ref([])
 const routeDistanceKm = ref(0)
+const routeKind = ref('straight_line_preview')
+const roadTravelMinutes = ref(null)
 const selectedTheme = ref(null)
 const selectedCulturalLine = ref(null)
 const favoriteStorageKey = 'smart-tourism-favorites'
@@ -275,6 +278,8 @@ const calculateDistanceKm = (from, to) => {
 }
 
 const updateRoute = () => {
+  routeKind.value = 'straight_line_preview'
+  roadTravelMinutes.value = null
   const routeCoordinates = selectedRoutePlaces.value
     .map((feature) => feature.geometry?.coordinates)
     .filter((coordinates) => Array.isArray(coordinates))
@@ -299,6 +304,37 @@ const updateRoute = () => {
     : emptyRoute()
 
   map?.getSource('route-line')?.setData(routeData)
+}
+
+const applyAiPlan = (plan) => {
+  const features = plan?.selected_places?.features
+  if (!mapReady.value || !Array.isArray(features) || features.length < 2) return
+  // All coordinates come from backend PostGIS; never directly from LLM.
+  const valid = features.every(f =>
+    Number.isInteger(f?.properties?.id) &&
+    Array.isArray(f?.geometry?.coordinates) &&
+    f.geometry.coordinates.length === 2 &&
+    f.geometry.coordinates.every(Number.isFinite)
+  )
+  if (!valid) return
+  exitThemeMode()
+  showFavoritesOnly.value = false
+  selectedRoutePlaces.value = features
+  searchResults.value = features
+  map?.getSource('places')?.setData({ type: 'FeatureCollection', features })
+  clearPopup()
+  updateRoute()
+  const road = plan.route
+  if (road?.status === 'verified_by_routing_service' &&
+      road.geojson?.type === 'FeatureCollection' &&
+      road.geojson.features?.[0]?.geometry?.type === 'LineString' &&
+      Number.isFinite(road.distance_km) && Number.isFinite(road.duration_minutes)) {
+    map?.getSource('route-line')?.setData(road.geojson)
+    routeDistanceKm.value = road.distance_km
+    roadTravelMinutes.value = road.duration_minutes
+    routeKind.value = 'valhalla'
+  }
+  frameResults(features)
 }
 
 const toggleRoutePlace = (feature) => {
@@ -796,8 +832,11 @@ onUnmounted(() => {
     <RoutePanel
       :places="selectedRoutePlaces"
       :distance-km="routeDistanceKm"
+      :route-kind="routeKind"
+      :road-travel-minutes="roadTravelMinutes"
       @clear="clearRoute"
     />
+    <AIItineraryPanel @apply="applyAiPlan" />
     <PlaceDetailPanel
       :place="selectedPlace"
       :place-details="placeDetails"
