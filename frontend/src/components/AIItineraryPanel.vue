@@ -154,7 +154,9 @@ async function requestEditPreview() {
     }, { timeout: 30000 })
     if (seq !== requestSeq) return
     preview.value = response.data
-    notice.value = '修改预览已生成，当前地图未变化；请检查后再确认'
+    notice.value = response.data.edit_summary?.intent_source === 'deepseek_bounded_json'
+      ? 'DeepSeek 已提出受限修改意图；地图尚未改变，请确认'
+      : '规则修改预览已生成，当前地图未变化；请检查后再确认'
   } catch (err) {
     if (seq === requestSeq) error.value = err?.response?.data?.detail || '修改预览失败，当前行程未变化'
   } finally {
@@ -361,7 +363,7 @@ function printReport() {
             <input v-model="editInstruction" maxlength="160" placeholder="例如：删除中山陵；或将夫子庙调整到第2站" />
           </label>
           <button type="button" :disabled="loading" @click="requestEditPreview">生成修改预览</button>
-          <small>当前支持准确景点名称的删除、调整站次；其他自然语言指令会明确拒绝，不会擅自修改。</small>
+          <small>优先使用规则；配置 DeepSeek API Key 后可解析更灵活的删除或调整站次意图。每轮基于当前已确认行程，不会擅自修改。</small>
         </div>
         <div class="ai-actions">
           <button type="button" :disabled="loading" @click="generate(true)">减少景点并预览</button>
@@ -374,7 +376,7 @@ function printReport() {
       <div v-if="preview" class="ai-preview">
         <h4>待确认优化方案</h4>
         <p>{{ preview.stops.map(s => s.name).join(' → ') }}</p>
-        <p v-if="preview.edit_summary">操作：{{ preview.edit_summary.operation === 'remove' ? '删除站点' : '调整顺序' }}；匹配景点ID：{{ preview.edit_summary.matched_place_id }}</p>
+        <p v-if="preview.edit_summary">来源：{{ preview.edit_summary.intent_source === 'deepseek_bounded_json' ? 'DeepSeek受限意图' : '确定性规则' }}；操作：{{ preview.edit_summary.operation === 'remove' ? '删除站点' : '调整顺序' }}；匹配景点ID：{{ preview.edit_summary.matched_place_id }}</p>
         <button type="button"  :disabled="loading" @click="confirmPreview">确认替换当前行程</button>
         <button type="button" @click="preview = null">放弃调整</button>
       </div>

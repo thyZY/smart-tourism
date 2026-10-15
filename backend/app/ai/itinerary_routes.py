@@ -7,6 +7,7 @@ from .itinerary_planner import ItineraryPlanner
 from .itinerary_contract import attach_contract
 from .road_optimizer import plan_verified_route
 from .itinerary_edit import edit_stop_ids
+from .itinerary_intent import resolve_edit_intent
 
 router = APIRouter(prefix="/api/ai/itinerary", tags=["AI Itinerary"])
 
@@ -131,14 +132,19 @@ def preview_itinerary_edit(request: EditPreviewRequest):
     if any(i not in current for i in request.place_ids):
         raise HTTPException(status_code=409, detail="原行程包含已失效景点，无法修改")
     try:
-        edited = edit_stop_ids([current[i] for i in request.place_ids], request.instruction)
+        verified_stops = [current[i] for i in request.place_ids]
+        try:
+            edited = edit_stop_ids(verified_stops, request.instruction)
+            edited["intent_source"] = "deterministic_rule"
+        except ValueError:
+            edited = resolve_edit_intent(verified_stops, request.instruction)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     plan = restore_itinerary(RestoreRequest(
         place_ids=edited["place_ids"], travel_mode=request.travel_mode))
     plan["title"] = "待确认的行程修改预览"
-    plan["planning_method"] = "deterministic_edit_preview"
+    plan["planning_method"] = "confirmed_edit_preview"
     plan["edit_summary"] = edited
-    plan["warnings"].append("修改由明确的规则解析完成，尚未应用到地图；仅确认后生效")
-    plan["provenance"]["planning_method"] = "deterministic_edit_preview"
+    plan["warnings"].append("模型如有参与，仅负责提出已核验景点的修改意图；地图仅在确认后更新")
+    plan["provenance"]["planning_method"] = plan["planning_method"]
     return plan

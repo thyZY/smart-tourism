@@ -36,6 +36,7 @@ class GateDEditTests(unittest.TestCase):
         app.include_router(itinerary_routes.router)
         client = TestClient(app)
         with patch.object(itinerary_routes, "fetch_candidates", return_value=POIS), \
+             patch.dict("os.environ", {"DEEPSEEK_API_KEY": ""}), \
              patch.object(itinerary_routes, "valhalla_route", return_value={
                  "status": "unavailable", "message": "offline test"}):
             original = [1, 2, 3]
@@ -45,8 +46,8 @@ class GateDEditTests(unittest.TestCase):
             payload = res.json()
             self.assertEqual(original, [1, 2, 3])
             self.assertEqual([s["id"] for s in payload["stops"]], [1, 2])
-            self.assertEqual(payload["planning_method"], "deterministic_edit_preview")
-            self.assertEqual(payload["provenance"]["planning_method"], "deterministic_edit_preview")
+            self.assertEqual(payload["planning_method"], "confirmed_edit_preview")
+            self.assertEqual(payload["provenance"]["planning_method"], "confirmed_edit_preview")
             self.assertEqual(payload["route"]["status"], "unavailable")
             self.assertEqual(client.post("/api/ai/itinerary/edit-preview", json={
                 "place_ids": [1, 999], "instruction": "删除夫子庙"}).status_code, 409)
