@@ -9,6 +9,7 @@ import os
 
 from .deepseek_client import DeepSeekClient
 from .itinerary_geo_service import valhalla_route
+from .recommendation_quality import evaluate_recommendation
 
 _CATEGORY_MATCH = {
     "历史": ("历史", "古迹", "陵园", "寺庙", "博物"),
@@ -114,6 +115,7 @@ class ItineraryPlanner:
             "summary": "已根据现有PostGIS景点记录生成候选行程。未核实景区开放、客流和无障碍条件。",
             "planning_method": method,
             "recommendation_audit": audit,
+            "quality_diagnostics": evaluate_recommendation(candidates, places, style, location, method),
             "days": 1, "mode": travel_mode, "stops": stops,
             "route": routing,
             "selected_places": {"type": "FeatureCollection", "features": [{
