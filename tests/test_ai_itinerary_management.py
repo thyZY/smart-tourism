@@ -145,7 +145,8 @@ class ItineraryTests(unittest.TestCase):
         app = FastAPI()
         app.include_router(itinerary_routes.router)
         client = TestClient(app)
-        with patch.object(itinerary_routes, "fetch_candidates", return_value=SAMPLE):
+        with patch.object(itinerary_routes, "fetch_candidates", return_value=SAMPLE), \
+             patch.dict(os.environ, {"VALHALLA_URL": "https://invalid.example"}):
             invalid = client.post("/api/ai/itinerary/restore", json={
                 "place_ids": [1, 1]})
             self.assertEqual(invalid.status_code, 422)
