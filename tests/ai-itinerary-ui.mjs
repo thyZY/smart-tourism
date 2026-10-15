@@ -52,10 +52,21 @@ const context = vm.createContext({
     write: s=>{printed+=s},close() {}},focus() {},print() {}
   }) }
 })
-vm.runInContext(script + '\nthis.testApi={request,result,preview,saved,error,notice,generate,apply,confirmPreview,save,restore,removeSaved,invalidateCurrent,exportRoad,exportJson,printReport};',context)
+vm.runInContext(script + '\nthis.testApi={request,result,preview,saved,error,notice,generate,apply,confirmPreview,excludedPlaceInput,save,restore,removeSaved,invalidateCurrent,exportRoad,exportJson,printReport};',context)
 const api=context.testApi
 
+api.excludedPlaceInput.value = '1, 3'
 await api.generate()
+assert.equal(calls.length,1)
+assert.deepEqual(JSON.parse(JSON.stringify(calls[0].payload.excluded_place_ids)), [1,3])
+api.excludedPlaceInput.value = '1,1'
+await api.generate()
+assert.equal(calls.length,1,'duplicate exclusions are rejected before network')
+assert.match(api.error.value,/重复/)
+api.excludedPlaceInput.value = '1,abc'
+await api.generate()
+assert.equal(calls.length,1,'non-numeric exclusions are rejected before network')
+api.excludedPlaceInput.value = ''
 assert.equal(calls.length,1)
 assert.equal(events[0].name,'apply')
 assert.equal(api.result.value.stops.length,3)

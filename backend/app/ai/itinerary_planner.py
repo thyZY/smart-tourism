@@ -36,7 +36,8 @@ class ItineraryPlanner:
 
     def generate(self, location, days=1, style="历史文化",
                  people="普通游客", walking_limit="中等",
-                 candidates=None, max_stops=4, travel_mode="pedestrian"):
+                 candidates=None, max_stops=4, travel_mode="pedestrian",
+                 excluded_place_ids=None):
         if days != 1:
             raise ValueError("当前版本只支持单日行程")
         candidates = candidates or []
@@ -115,6 +116,7 @@ class ItineraryPlanner:
             "summary": "已根据现有PostGIS景点记录生成候选行程。未核实景区开放、客流和无障碍条件。",
             "planning_method": method,
             "recommendation_audit": audit,
+            "excluded_place_ids": list(excluded_place_ids or []),
             "quality_diagnostics": evaluate_recommendation(candidates, places, style, location, method),
             "days": 1, "mode": travel_mode, "stops": stops,
             "route": routing,

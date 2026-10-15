@@ -154,6 +154,17 @@ class ItineraryTests(unittest.TestCase):
             self.assertEqual([p["id"] for p in payload["stops"]], [3, 1])
             self.assertEqual(payload["route"]["status"], "unavailable")
             self.assertNotIn("distance_km", payload["route"])
+            with patch.dict(os.environ, {}, clear=True):
+                excluded_result = client.post("/api/ai/itinerary/generate", json={
+                    "location": "南京", "excluded_place_ids": [1],
+                    "max_stops": 3})
+            self.assertEqual(excluded_result.status_code, 200)
+            self.assertEqual(excluded_result.json()["excluded_place_ids"], [1])
+            self.assertEqual({stop["id"] for stop in excluded_result.json()["stops"]}, {2, 3})
+            for invalid_ids in ([1, 1], [999], [1, 2], [0]):
+                invalid_exclusion = client.post("/api/ai/itinerary/generate", json={
+                    "location": "南京", "excluded_place_ids": invalid_ids})
+                self.assertEqual(invalid_exclusion.status_code, 422, invalid_ids)
             no_days = client.post("/api/ai/itinerary/generate", json={
                 "location": "南京", "days": 3})
             self.assertEqual(no_days.status_code, 422)

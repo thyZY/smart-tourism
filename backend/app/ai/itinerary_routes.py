@@ -15,6 +15,7 @@ class ItineraryRequest(BaseModel):
     people: str = Field(default="普通游客", max_length=80)
     walking_limit: str = Field(default="中等", max_length=80)
     max_stops: int = Field(default=4, ge=2, le=6)
+    excluded_place_ids: list[int] = Field(default_factory=list, max_length=40)
     travel_mode: str = Field(default="pedestrian", pattern="^(pedestrian|bicycle|auto)$")
 
 
@@ -26,12 +27,22 @@ def generate_itinerary(request: ItineraryRequest):
         raise HTTPException(status_code=503, detail="POI数据库暂不可用") from exc
     if not candidates:
         raise HTTPException(status_code=404, detail="数据库中没有可规划的景点")
+    excluded = request.excluded_place_ids
+    if any(type(id_) is not int or id_ <= 0 for id_ in excluded) or len(set(excluded)) != len(excluded):
+        raise HTTPException(status_code=422, detail="排除景点ID必须是无重复的正整数")
+    available_ids = {p["id"] for p in candidates}
+    if any(id_ not in available_ids for id_ in excluded):
+        raise HTTPException(status_code=422, detail="排除列表包含数据库中不存在的景点")
+    excluded_set = set(excluded)
+    candidates = [p for p in candidates if p["id"] not in excluded_set]
+    if len(candidates) < 2:
+        raise HTTPException(status_code=422, detail="排除后剩余景点不足2个，请减少排除项")
     try:
         return ItineraryPlanner().generate(
             location=request.location, days=request.days, style=request.style,
             people=request.people, walking_limit=request.walking_limit,
             candidates=candidates, max_stops=request.max_stops,
-            travel_mode=request.travel_mode,
+            travel_mode=request.travel_mode, excluded_place_ids=excluded,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

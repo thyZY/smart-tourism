@@ -10,6 +10,7 @@ const request = reactive({
   people: '普通游客', walking_limit: '中等', max_stops: 4,
   travel_mode: 'pedestrian'
 })
+const excludedPlaceInput = ref('')
 const result = ref(null)
 const preview = ref(null)
 const saved = ref(readSaved())
@@ -65,7 +66,19 @@ async function generate(onlyPreview = false) {
   loading.value = true
   const seq = ++requestSeq
   try {
-    const payload = { ...request }
+    const tokens = excludedPlaceInput.value.trim() ? excludedPlaceInput.value.split(/[,，\s]+/).filter(Boolean) : []
+    if (tokens.length > 40 || tokens.some(token => !/^[1-9][0-9]*$/.test(token))) {
+      error.value = '排除项须为最多40个正整数景点ID'
+      loading.value = false
+      return
+    }
+    const excluded = tokens.map(Number)
+    if (excluded.some(id => !Number.isSafeInteger(id)) || new Set(excluded).size !== excluded.length) {
+      error.value = '排除景点ID重复或无效'
+      loading.value = false
+      return
+    }
+    const payload = { ...request, excluded_place_ids: excluded }
     if (onlyPreview) {
       payload.walking_limit = '低'
       payload.max_stops = Math.max(2, Math.min(6, ids(result.value).length - 1))
@@ -202,6 +215,9 @@ function printReport() {
         <textarea v-model="request.location" maxlength="160" rows="2"
           placeholder="南京一日历史文化，老人同行，少步行" />
       </label>
+      <label>排除景点 ID（可选，逗号分隔）
+        <input v-model="excludedPlaceInput" maxlength="240" placeholder="例如 1, 3" />
+      </label>
       <div class="ai-fields">
         <label>兴趣主题 <input v-model="request.style" maxlength="80" /></label>
         <label>同行人员 <input v-model="request.people" maxlength="80" /></label>
@@ -233,6 +249,7 @@ function printReport() {
       <div v-if="result" class="ai-results">
         <h4>{{ result.title }}</h4>
         <p>{{ result.summary }}</p>
+        <p v-if="result.excluded_place_ids?.length">已排除景点 ID：{{ result.excluded_place_ids.join('、') }}</p>
         <small>排序方式：{{ result.planning_method === 'deepseek_ranked_verified_ids' ? 'DeepSeek从真实POI中排序' : '数据库规则排序（AI未使用或不可用）' }}</small>
         <details v-if="result.recommendation_audit" class="ai-audit">
           <summary>查看推荐依据与数据限制</summary>
