@@ -37,7 +37,7 @@ class FakeClient:
 
 class ItineraryTests(unittest.TestCase):
     def test_fallback_no_key_never_invents_poi_or_road(self):
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, {"VALHALLA_URL": "https://invalid.example"}, clear=True):
             result = ItineraryPlanner().generate(
                 "南京", candidates=SAMPLE, max_stops=3)
         self.assertEqual(result["planning_method"], "local_rule_fallback")
@@ -80,7 +80,7 @@ class ItineraryTests(unittest.TestCase):
                 self.assertEqual(result["planning_method"], "local_rule_fallback")
 
     def test_valhalla_disabled_does_not_make_fake_road(self):
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, {"VALHALLA_URL": "https://not-allowed.example"}, clear=True):
             result = valhalla_route(SAMPLE)
         self.assertEqual(result["status"], "unavailable")
         self.assertNotIn("geojson", result)
@@ -120,15 +120,20 @@ class ItineraryTests(unittest.TestCase):
             def __exit__(self, *_): return False
             def read(self, size): return fake_response[:size]
 
-        with patch.object(geo, "urlopen", return_value=Response()) as request:
+        class FakeOpener:
+            def open(self, request, timeout=18):
+                self.request = request
+                return Response()
+        opener = FakeOpener()
+        with patch.dict(os.environ, {"VALHALLA_URL": "http://127.0.0.1:8002"}), patch.object(geo, "request_opener", return_value=opener):
             route = geo.valhalla_route(
                 SAMPLE[:2], endpoint="http://127.0.0.1:8002")
         self.assertEqual(route["status"], "verified_by_routing_service")
         self.assertEqual(route["distance_km"], 2.3)
         self.assertEqual(route["duration_minutes"], 5)
         self.assertEqual(route["geojson"]["features"][0]["geometry"]["coordinates"], coords)
-        self.assertIn("/route", request.call_args.args[0].full_url)
-        self.assertEqual(request.call_args.args[0].get_method(), "POST")
+        self.assertIn("/route", opener.request.full_url)
+        self.assertEqual(opener.request.get_method(), "POST")
 
     def test_untrusted_remote_valhalla_endpoint_rejected(self):
         route = valhalla_route(
@@ -140,7 +145,8 @@ class ItineraryTests(unittest.TestCase):
         app = FastAPI()
         app.include_router(itinerary_routes.router)
         client = TestClient(app)
-        with patch.object(itinerary_routes, "fetch_candidates", return_value=SAMPLE):
+        with patch.object(itinerary_routes, "fetch_candidates", return_value=SAMPLE), \
+             patch.dict(os.environ, {"VALHALLA_URL": "https://invalid.example"}):
             invalid = client.post("/api/ai/itinerary/restore", json={
                 "place_ids": [1, 1]})
             self.assertEqual(invalid.status_code, 422)

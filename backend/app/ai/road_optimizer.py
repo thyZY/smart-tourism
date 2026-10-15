@@ -1,13 +1,14 @@
-"""Verified local-Valhalla time-matrix optimization of 2–6 database POIs.
+"""Verified allowlisted-Valhalla time-matrix optimization of 2–6 database POIs.
 
-Uses the same localhost-only service trust boundary as itinerary_geo_service.
+Uses one fixed public HTTPS demo or explicitly configured localhost service.
 No public routing endpoint or invented road distance is used.
 """
 import json
 import math
 import os
 from itertools import permutations
-from urllib.request import Request, urlopen
+from urllib.request import Request
+from .valhalla_config import valhalla_root, request_opener
 
 from .itinerary_geo_service import fetch_candidates, valhalla_route
 
@@ -28,17 +29,6 @@ def optimize_fixed_first(times):
     return best, cost(original), cost(best)
 
 
-def _local_root():
-    raw = os.getenv("VALHALLA_URL", "").strip().rstrip("/")
-    # Only loopback services are allowed, aligned with existing v1.x endpoint.
-    from urllib.parse import urlsplit
-    parsed = urlsplit(raw)
-    if parsed.scheme != "http" or parsed.hostname not in ("127.0.0.1", "localhost") or not parsed.port:
-        return None
-    if parsed.username or parsed.password or parsed.query or parsed.fragment:
-        return None
-    return raw[:-6] if raw.endswith("/route") else raw
-
 
 def _get_matrix(places, mode, root):
     positions = [{"lat": p["lat"], "lon": p["lng"]} for p in places]
@@ -47,7 +37,7 @@ def _get_matrix(places, mode, root):
     req = Request(root + "/sources_to_targets",
                   data=json.dumps(payload).encode("utf8"), method="POST",
                   headers={"Content-Type": "application/json"})
-    with urlopen(req, timeout=18) as resp:
+    with request_opener().open(req, timeout=18) as resp:
         raw = resp.read(2_000_001)
     if len(raw) > 2_000_000:
         raise ValueError("Oversized matrix")
@@ -74,9 +64,9 @@ def plan_verified_route(place_ids, mode="pedestrian", optimize=False):
     if any(i not in candidates for i in place_ids):
         raise LookupError("POI ID not found in current database")
     places = [candidates[i] for i in place_ids]
-    root = _local_root()
+    root = valhalla_root()
     if not root:
-        return {"status": "unavailable", "message": "请先配置本机 VALHALLA_URL；保留直线预览"}
+        return {"status": "unavailable", "message": "VALHALLA_URL 不在允许的地址列表中；保留直线预览"}
     original_seconds = optimized_seconds = None
     if optimize and len(places) >= 3:
         try:
