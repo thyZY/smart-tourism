@@ -30,7 +30,7 @@ class GateCRoutingTests(unittest.TestCase):
                  "address": "", "lng": 118.7 + i/1000, "lat": 32.01}
                 for i in (1, 2, 3)]
         with patch("app.ai.road_optimizer.fetch_candidates", return_value=pois):
-            with patch.dict("os.environ", {"VALHALLA_URL": ""}):
+            with patch.dict("os.environ", {"VALHALLA_URL": "https://not-allowed.example"}):
                 result = plan_verified_route([1, 2], "pedestrian")
             self.assertEqual(result["status"], "unavailable")
             self.assertNotIn("geojson", result)
@@ -50,7 +50,7 @@ class GateCRoutingTests(unittest.TestCase):
                     "coordinates": [[118.7, 32.01], [118.8, 32.01]]},
                     "properties": {}}]}}
         with patch("app.ai.road_optimizer.fetch_candidates", return_value=pois), \
-             patch("app.ai.road_optimizer._local_root", return_value="http://127.0.0.1:8002"), \
+             patch("app.ai.road_optimizer.valhalla_root", return_value="http://127.0.0.1:8002"), \
              patch("app.ai.road_optimizer._get_matrix", return_value=[
                  [0, 100, 10], [40, 0, 100], [30, 10, 0]]), \
              patch("app.ai.road_optimizer.valhalla_route", return_value=road):
