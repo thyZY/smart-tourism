@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from .itinerary_geo_service import fetch_candidates, valhalla_route
 from .itinerary_planner import ItineraryPlanner
 from .itinerary_contract import attach_contract
+from .road_optimizer import plan_verified_route
 
 router = APIRouter(prefix="/api/ai/itinerary", tags=["AI Itinerary"])
 
@@ -90,3 +91,22 @@ def restore_itinerary(request: RestoreRequest):
             "已重新查询PostGIS景点和尝试请求道路；开放时间与通行性未核实"
         ]
     })
+
+
+class RoadCalculationRequest(BaseModel):
+    place_ids: list[int] = Field(..., min_length=2, max_length=6)
+    travel_mode: str = Field(default="pedestrian", pattern="^(pedestrian|bicycle|auto)$")
+    optimize: bool = False
+
+
+@router.post("/road")
+def calculate_road(request: RoadCalculationRequest):
+    """Optional local Valhalla route; only verified DB IDs are accepted."""
+    try:
+        return plan_verified_route(request.place_ids, request.travel_mode, request.optimize)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="道路服务调用失败，原直线预览保持不变") from exc
