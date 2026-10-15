@@ -147,6 +147,7 @@ const currentAreaData = {
 currentAreaRequest.resolve({ data: currentAreaData })
 await currentArea
 assert.equal(map.sources.places.data, currentAreaData, 'current-area search updates the GeoJSON source')
+assert.equal(map.sources['places-clusters'].data, currentAreaData, 'clustered markers reflect current-area filtering')
 assert.equal(map.layers['places-heatmap'].source, 'places', 'filtered source data remains available to the heatmap')
 assert.equal(map.flyToCalls, flyToCallsBeforeCurrentArea, 'current-area search does not call overview or flyTo')
 assert.equal(map.fitBoundsCalls, fitBoundsCallsBeforeCurrentArea, 'current-area search does not frame results')
@@ -176,6 +177,7 @@ requests.at(-1).resolve({ data: allPlaces })
 await allPlacesRequest
 api.focusResult(museum)
 assert.equal(api.selectedPlace.value, museum, 'list selection stores the selected place feature')
+assert.equal(map.sources['selected-place'].data.features[0].properties.id, 1, 'list focus adds halo to selected POI')
 assert.equal(api.selectedPlace.value.properties.name, '南京博物院', 'detail panel receives the selected place name')
 assert.equal(api.placeDetails[1].rating, 4.8, 'selected place uses the static detail configuration')
 assert.equal(api.isFavorite(museum.properties.id), false, 'detail favorite state starts in sync')
@@ -186,6 +188,7 @@ assert.equal(api.selectedRoutePlaces.value.length, 1, 'detail route action uses 
 api.closePlaceDetail()
 assert.equal(api.selectedPlace.value, null, 'closing detail clears selected place')
 assert.equal(api.selectedPlaceId.value, null, 'closing detail clears selected place highlight')
+assert.equal(map.sources['selected-place'].data.features.length, 0, 'selected halo is removed on closing details')
 api.toggleFavorite(museum)
 api.toggleRoutePlace(museum)
 map.handlers['click:places-points']({ features: [museum] })
@@ -198,6 +201,20 @@ assert.match(appSource, /@click="focusResult\(feature\)"/, 'result selection ope
 assert.match(appSource, /<ThemePanel/, 'theme panel is mounted in the application')
 assert.equal(themes.length, 3, 'three static tourism themes are available')
 assert.deepEqual(themes[0].categories, ['历史文化', '古迹遗址'], 'history theme has its configured categories')
+assert.match(appSource, /@focus-place="focusResult"/, 'clickable route list focuses matching map POI')
+assert.match(appSource, /cluster:\s*true/, 'map POI marker source enables clustering')
+assert.match(appSource, /glyphs:\s*'https:\/\//, 'raster map enables label glyphs')
+let lastEase = null
+map.easeTo = opts => { lastEase = opts }
+map.sources['places-clusters'].getClusterExpansionZoom = async id => {
+  assert.equal(id, 77)
+  return 14
+}
+await map.handlers['click:places-clusters']({
+  features: [{ properties: { cluster_id: 77 }, geometry: { coordinates: [118.8, 32.0] } }]
+})
+assert.equal(lastEase.zoom, 14, 'clicking cluster animates to expansion zoom')
+assert.deepEqual(JSON.parse(JSON.stringify(lastEase.center)), [118.8, 32.0])
 api.setMapDisplayMode('heatmap')
 api.selectTheme(themes[0])
 assert.equal(api.selectedTheme.value.id, 'history-culture', 'selecting a theme enters theme mode')
