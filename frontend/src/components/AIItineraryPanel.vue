@@ -11,6 +11,40 @@ const request = reactive({
   travel_mode: 'pedestrian'
 })
 const excludedPlaceInput = ref('')
+const exclusionSearch = ref('')
+const exclusionChoices = ref([])
+const selectedExcludedIds = ref([])
+const exclusionLoading = ref(false)
+const exclusionError = ref('')
+async function loadExclusionChoices() {
+  if (exclusionLoading.value) return
+  exclusionLoading.value = true
+  exclusionError.value = ''
+  try {
+    const response = await axios.get('http://127.0.0.1:8010/api/places', { timeout: 10000 })
+    const features = response.data?.features
+    if (!Array.isArray(features)) throw new Error('invalid POI payload')
+    exclusionChoices.value = features.filter(f => Number.isSafeInteger(f?.properties?.id) &&
+      f.properties.id > 0 && typeof f.properties.name === 'string')
+  } catch {
+    exclusionError.value = '无法读取数据库景点，请检查后端连接'
+  } finally {
+    exclusionLoading.value = false
+  }
+}
+function filteredExclusionChoices() {
+  const q = exclusionSearch.value.trim().toLowerCase()
+  return exclusionChoices.value.filter(f =>
+    !q || f.properties.name.toLowerCase().includes(q) ||
+    (f.properties.category || '').toLowerCase().includes(q)).slice(0, 40)
+}
+function toggleExcludedId(id) {
+  if (selectedExcludedIds.value.includes(id)) {
+    selectedExcludedIds.value = selectedExcludedIds.value.filter(value => value !== id)
+  } else if (selectedExcludedIds.value.length < 40) {
+    selectedExcludedIds.value = [...selectedExcludedIds.value, id]
+  }
+}
 const result = ref(null)
 const preview = ref(null)
 const saved = ref(readSaved())
@@ -78,7 +112,13 @@ async function generate(onlyPreview = false) {
       loading.value = false
       return
     }
-    const payload = { ...request, excluded_place_ids: excluded }
+    const combined = [...excluded, ...selectedExcludedIds.value]
+    if (new Set(combined).size !== combined.length || combined.length > 40) {
+      error.value = '排除项重复或超过40个，请检查选择列表'
+      loading.value = false
+      return
+    }
+    const payload = { ...request, excluded_place_ids: combined }
     if (onlyPreview) {
       payload.walking_limit = '低'
       payload.max_stops = Math.max(2, Math.min(6, ids(result.value).length - 1))
@@ -218,6 +258,26 @@ function printReport() {
       <label>排除景点 ID（可选，逗号分隔）
         <input v-model="excludedPlaceInput" maxlength="240" placeholder="例如 1, 3" />
       </label>
+      <div class="ai-exclusion-picker">
+        <button type="button" :disabled="exclusionLoading" @click="loadExclusionChoices">
+          {{ exclusionLoading ? '读取中…' : '从数据库选择排除景点' }}
+        </button>
+        <p v-if="exclusionError" role="alert">{{ exclusionError }}</p>
+        <template v-if="exclusionChoices.length">
+          <input v-model="exclusionSearch" type="search" aria-label="搜索排除景点"
+            placeholder="搜索景点名称或类别" />
+          <p>已勾选 {{ selectedExcludedIds.length }} 处景点；列表来自当前数据库。</p>
+          <div class="ai-exclusion-results">
+            <label v-for="feature in filteredExclusionChoices()" :key="feature.properties.id">
+              <input type="checkbox"
+                :checked="selectedExcludedIds.includes(feature.properties.id)"
+                :disabled="selectedExcludedIds.length >= 40 && !selectedExcludedIds.includes(feature.properties.id)"
+                @change="toggleExcludedId(feature.properties.id)" />
+              {{ feature.properties.name }}（{{ feature.properties.category }}）
+            </label>
+          </div>
+        </template>
+      </div>
       <div class="ai-fields">
         <label>兴趣主题 <input v-model="request.style" maxlength="80" /></label>
         <label>同行人员 <input v-model="request.people" maxlength="80" /></label>
@@ -327,5 +387,9 @@ function printReport() {
 .ai-audit{margin:10px 0;padding:8px;border:1px solid #d9e1ee;border-radius:6px;background:#f8fafc}
 .ai-audit summary{cursor:pointer;font-weight:600;color:#1d3557}
 .ai-audit p{font-size:12px;line-height:1.55}
+.ai-exclusion-picker{margin:8px 0;padding:8px;border:1px solid #d9e1ee;border-radius:6px}
+.ai-exclusion-results{max-height:156px;overflow-y:auto;margin-top:6px}
+.ai-exclusion-results label{display:flex;align-items:center;gap:6px;padding:3px}
+.ai-exclusion-results input[type="checkbox"]{width:auto;flex-shrink:0}
 @media(max-height:650px){.ai-content{max-height:38vh}}
 </style>
