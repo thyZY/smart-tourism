@@ -163,6 +163,12 @@ async function requestEditPreview() {
     if (seq === requestSeq) loading.value = false
   }
 }
+function jumpToSection(sectionId) {
+  const root = document.querySelector('.ai-itinerary-panel')
+  const target = root?.querySelector('#' + sectionId)
+  if (!target) return
+  target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 function confirmPreview() {
   // A preview is advisory until explicit confirmation. Never apply while a new
   // request is running, after manual map edits or without an active plan.
@@ -274,8 +280,14 @@ function printReport() {
       <div class="ai-title-row"><span class="ai-title-icon" aria-hidden="true">✦</span><div><h3>AI 行程规划</h3><span class="ai-title-kicker">SMART ITINERARY</span></div></div>
       <p>从真实 PostGIS 景点中选择与排序，生成后可保存、修改及导出报告。</p>
     </div>
+      <nav v-if="result || preview || saved.length" class="ai-quick-nav" aria-label="行程工作台快捷导航">
+        <button type="button" @click="jumpToSection('ai-plan-section')">规划</button>
+        <button v-if="result" type="button" @click="jumpToSection('ai-edit-section')">修改行程</button>
+        <button v-if="preview" type="button" class="ai-quick-pending" @click="jumpToSection('ai-preview-section')">待确认预览</button>
+        <button type="button" @click="jumpToSection('ai-saved-section')">已保存 ({{ saved.length }})</button>
+      </nav>
     <div class="ai-content">
-      <h4 class="ai-field-title"><span class="ai-section-index">01</span> 旅行条件</h4>
+      <h4 id="ai-plan-section" class="ai-field-title"><span class="ai-section-index">01</span> 旅行条件</h4>
       <label>旅行需求
         <textarea v-model="request.location" maxlength="160" rows="2"
           placeholder="南京一日历史文化，老人同行，少步行" />
@@ -353,12 +365,12 @@ function printReport() {
           <p>类别构成：{{ Object.entries(result.quality_diagnostics.category_counts).map(([name, count]) => name + ' ' + count).join('、') || '未分类' }}</p>
           <p v-for="limit in result.quality_diagnostics.limitations" :key="limit">{{ limit }}</p>
         </details>
-        <ol><li v-for="s in result.stops" :key="s.id">{{ s.name }} · {{ s.category }}<small> — {{ s.reason }}<template v-if="result.recommendation_audit?.score_is_selection_basis && Number.isFinite(s.rule_score)">（规则匹配分：{{ s.rule_score }}）</template></small></li></ol>
+        <details class="ai-stops-disclosure"><summary>查看完整行程站点（{{ result.stops.length }} 站）</summary><ol><li v-for="s in result.stops" :key="s.id">{{ s.name }} · {{ s.category }}<small> — {{ s.reason }}<template v-if="result.recommendation_audit?.score_is_selection_basis && Number.isFinite(s.rule_score)">（规则匹配分：{{ s.rule_score }}）</template></small></li></ol></details>
         <p v-if="result.route?.status === 'verified_by_routing_service'">
           Valhalla道路：{{ result.route.distance_km }} km，约 {{ result.route.duration_minutes }} 分钟
         </p>
         <p v-else>道路未核验；地图直线只作景点顺序预览。</p>
-        <div class="ai-edit-workspace"><h4><span class="ai-section-index">02</span> 修改当前行程</h4>
+        <div id="ai-edit-section" class="ai-edit-workspace"><h4><span class="ai-section-index">02</span> 修改当前行程</h4>
           <label>按要求修改当前行程（仅生成预览）
             <input v-model="editInstruction" maxlength="160" placeholder="例如：删除中山陵；或将夫子庙调整到第2站" />
           </label>
@@ -373,14 +385,14 @@ function printReport() {
           <button type="button" @click="printReport">打印报告 / 另存 PDF</button>
         </div>
       </div>
-      <div v-if="preview" class="ai-preview" role="region" aria-label="待确认的行程修改">
+      <div v-if="preview" id="ai-preview-section" class="ai-preview" role="region" aria-label="待确认的行程修改">
         <h4>待确认优化方案</h4>
         <p>{{ preview.stops.map(s => s.name).join(' → ') }}</p>
         <p v-if="preview.edit_summary">来源：{{ preview.edit_summary.intent_source === 'deepseek_bounded_json' ? 'DeepSeek受限意图' : '确定性规则' }}；操作：{{ preview.edit_summary.operation === 'remove' ? '删除站点' : '调整顺序' }}；匹配景点ID：{{ preview.edit_summary.matched_place_id }}</p>
         <button class="ai-primary-action" type="button" :disabled="loading" @click="confirmPreview">确认替换当前行程</button>
         <button type="button" @click="preview = null">放弃调整</button>
       </div>
-      <div class="ai-saved">
+      <div id="ai-saved-section" class="ai-saved">
         <h4><span class="ai-section-index">03</span> 本地保存的行程</h4><small class="ai-muted">仅保存在当前浏览器，不同步到云端</small>
         <p v-if="!saved.length">暂无保存记录</p>
         <div v-for="item in saved" :key="item.id" class="ai-saved-item">
@@ -478,4 +490,17 @@ function printReport() {
 .ai-actions{display:flex;flex-wrap:wrap;gap:4px}
 .ai-actions button{flex:1 1 125px}
 @media(max-width:600px){.ai-panel-intro{padding:12px}.ai-content{padding:10px 4px}.ai-fields{grid-template-columns:1fr 1fr}}
+
+.ai-quick-nav{position:sticky;top:0;z-index:3;display:flex;gap:5px;flex-wrap:wrap;padding:9px 9px;background:#f8fbfffa;border-bottom:1px solid #dae6f7;box-shadow:0 3px 7px #20436a0a}
+.ai-quick-nav button{flex:1 1 auto;min-width:68px;padding:7px 8px;color:#215bad;border:1px solid #cddff6;background:#fff;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer}
+.ai-quick-nav button:hover{background:#e7f0ff}
+.ai-quick-nav .ai-quick-pending{border-color:#a9d9c4;background:#eaf8f1;color:#186843}
+.ai-quick-nav button:focus-visible{outline:2px solid #286dd1;outline-offset:2px}
+#ai-plan-section,#ai-edit-section,#ai-preview-section,#ai-saved-section{scroll-margin-top:65px}
+.ai-stops-disclosure{margin:10px 0;border:1px solid #e0e8f4;border-radius:8px;background:#fbfdff;padding:8px 10px}
+.ai-stops-disclosure summary{cursor:pointer;font-size:12px;font-weight:700;color:#2459a4}
+.ai-stops-disclosure summary:focus-visible{outline:2px solid #2d73d7;outline-offset:2px}
+.ai-stops-disclosure ol{margin:8px 0 0}
+@media(max-width:600px){.ai-quick-nav{gap:4px;padding:7px 5px}.ai-quick-nav button{font-size:11px;padding:8px 5px}}
+@media(prefers-reduced-motion:reduce){.ai-quick-nav button{transition:none}}
 </style>

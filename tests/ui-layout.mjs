@@ -45,4 +45,13 @@ assert.match(template, /@click="focusResult\(feature\)"/)
 assert.match(template, /@click="selectCategory\(category\)"/)
 assert.match(template, /@apply="applyAiPlan"/)
 assert.match(template, /@export-grid="downloadAnalysisGrid"/)
+const itinerary = readFileSync(new URL('../frontend/src/components/AIItineraryPanel.vue', import.meta.url), 'utf8')
+assert.match(itinerary, /class="ai-quick-nav"/, 'quick navigation exists')
+for (const id of ['ai-plan-section','ai-edit-section','ai-preview-section','ai-saved-section']) {
+  assert.ok(itinerary.includes('id="' + id + '"'), 'jump target exists: ' + id)
+  assert.ok(itinerary.includes("jumpToSection('" + id + "')"), 'nav action exists: ' + id)
+}
+assert.match(itinerary, /class="ai-stops-disclosure"/, 'long stop list is collapsible')
+assert.match(styles, /@media\(min-width:1021px\) and \(max-width:1280px\)/, 'tablet layout rules exist')
+assert.match(styles, /max-height:70dvh/, 'phone workspace can scroll')
 console.log('Responsive workspace structural regression PASS')

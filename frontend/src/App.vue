@@ -1501,4 +1501,25 @@ body { overflow: hidden; font-family: Inter, 'Segoe UI', 'Microsoft YaHei', sans
 .workspace-slot{padding-top:10px}
 .maplibregl-popup-content{border-radius:9px;box-shadow:0 8px 24px #1b3c5f24}
 @media(prefers-reduced-motion:reduce){.workspace-tabs button{transition:none}}
+
+/* Responsive workspace refinements; map data and rendering are unchanged. */
+@media(min-width:1021px) and (max-width:1280px){
+  .map-wrapper{--workspace-width:340px;--explorer-width:236px}
+  .workspace-content{padding:0 10px 14px}
+  .workspace-tabs{gap:3px;padding:8px 7px 10px}
+  .workspace-tabs button{font-size:11px;padding:9px 2px}
+}
+@media(max-width:1020px){
+  .map-stage{min-height:42vh}
+  .workspace-panel{max-height:65dvh;min-height:320px}
+  .workspace-content{max-height:none;min-height:0;overflow-y:auto}
+  .explorer-panel{max-height:220px}
+}
+@media(max-width:600px){
+  .workspace-panel{max-height:70dvh;min-height:320px}
+  .workspace-content{padding:0 10px 12px}
+  .workspace-tabs{gap:3px;padding:7px 7px 9px}
+  .workspace-tabs button{white-space:normal;line-height:1.35;min-height:36px}
+  .map-route-status{left:8px;bottom:34px;max-width:calc(100% - 16px)}
+}
 </style>
