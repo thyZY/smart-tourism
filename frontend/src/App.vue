@@ -1253,28 +1253,28 @@ body { overflow: hidden; font-family: Inter, 'Segoe UI', 'Microsoft YaHei', sans
 .workspace-slot {display:block;min-width:0;padding:6px 0;}
 /* Existing child components used map-wide absolute positioning. Inside a workspace slot
    they must participate in normal document flow, not paint over other features. */
-.workspace-slot > .ai-itinerary-panel,
-.workspace-slot > .route-panel,
-.workspace-slot > .theme-panel,
-.workspace-slot > .cultural-line-panel,
-.workspace-slot > .statistics-panel,
-.workspace-slot > .place-detail-panel,
-.workspace-slot > .spatial-analysis-panel {
+.map-wrapper .workspace-slot > .ai-itinerary-panel,
+.map-wrapper .workspace-slot > .route-panel,
+.map-wrapper .workspace-slot > .theme-panel,
+.map-wrapper .workspace-slot > .cultural-line-panel,
+.map-wrapper .workspace-slot > .statistics-panel,
+.map-wrapper .workspace-slot > .place-detail-panel,
+.map-wrapper .workspace-slot > .spatial-analysis-panel {
   position:static;width:100%;max-width:100%;height:auto;min-height:0;top:auto;right:auto;bottom:auto;left:auto;
   z-index:auto;margin:0;box-shadow:none;box-sizing:border-box;border:0;border-radius:0;
   background:transparent;overflow:visible;color:#233047;
 }
-.workspace-slot > .statistics-panel.collapsed {width:100%;}
-.workspace-slot .ai-content {max-height:none;min-height:0;overflow:visible;padding:13px 4px;}
-.workspace-slot .ai-toggle {border-radius:8px;}
-.workspace-slot .ai-itinerary-panel {font-size:13px;}
-.workspace-slot .route-panel-header {align-items:flex-start;}
-.workspace-slot .route-panel-header h2 {min-width:0;}
-.workspace-slot .route-panel-header button {flex-shrink:0;}
-.workspace-slot .theme-card,.workspace-slot .cultural-line-card {width:100%;}
-.workspace-slot .spatial-analysis-panel {padding:12px 2px;}
-.workspace-slot .place-detail-panel {padding:10px 2px;}
-.workspace-slot .statistics-panel {padding:8px 0;}
+.map-wrapper .workspace-slot > .statistics-panel.collapsed {width:100%;}
+.map-wrapper .workspace-slot .ai-content {max-height:none;min-height:0;overflow:visible;padding:13px 4px;}
+.map-wrapper .workspace-slot .ai-toggle {border-radius:8px;}
+.map-wrapper .workspace-slot .ai-itinerary-panel {font-size:13px;}
+.map-wrapper .workspace-slot .route-panel-header {align-items:flex-start;}
+.map-wrapper .workspace-slot .route-panel-header h2 {min-width:0;}
+.map-wrapper .workspace-slot .route-panel-header button {flex-shrink:0;}
+.map-wrapper .workspace-slot .theme-card,.workspace-slot .cultural-line-card {width:100%;}
+.map-wrapper .workspace-slot .spatial-analysis-panel {padding:12px 2px;}
+.map-wrapper .workspace-slot .place-detail-panel {padding:10px 2px;}
+.map-wrapper .workspace-slot .statistics-panel {padding:8px 0;}
 .maplibregl-popup-content {color:#263347;text-align:left;}
 @media(max-width:1370px){
   .map-wrapper{--explorer-width:252px;--workspace-width:320px;}
