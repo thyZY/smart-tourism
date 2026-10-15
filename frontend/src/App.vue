@@ -101,6 +101,23 @@ const loading = ref(false)
 const mapReady = ref(false)
 let requestController = null
 const emptyPlaces = () => ({ type: 'FeatureCollection', features: [] })
+// Raw POIs remain intact for heatmaps; only the point display is clustered.
+const setVisiblePlaces = (collection) => {
+  map?.getSource('places')?.setData(collection)
+  map?.getSource('places-clusters')?.setData(collection)
+}
+const routeStopCollection = () => ({
+  type: 'FeatureCollection',
+  features: selectedRoutePlaces.value
+    .filter(place => Array.isArray(place.geometry?.coordinates) &&
+      place.geometry.coordinates.length === 2 &&
+      place.geometry.coordinates.every(Number.isFinite))
+    .map((place, index) => ({
+      type: 'Feature',
+      properties: { ...place.properties, stop_order: index + 1 },
+      geometry: { type: 'Point', coordinates: place.geometry.coordinates }
+    }))
+})
 const emptyRoute = () => ({ type: 'FeatureCollection', features: [] })
 const emptyCulturalLine = () => ({ type: 'FeatureCollection', features: [] })
 const emptyTourismGrid = () => ({ type: 'FeatureCollection', features: [] })
@@ -258,7 +275,7 @@ const favoriteCollection = () => {
 const renderFavoritePlaces = () => {
   const collection = favoriteCollection()
   searchResults.value = collection.features
-  map?.getSource('places')?.setData(collection)
+  setVisiblePlaces(collection)
   searchMessage.value = collection.features.length ? '' : '暂无收藏景点'
 }
 
@@ -305,7 +322,7 @@ const showFavoritePlaces = async () => {
     if (controller.signal.aborted || axios.isCancel(error)) return
 
     searchResults.value = []
-    map?.getSource('places')?.setData(emptyPlaces())
+    setVisiblePlaces(emptyPlaces())
     searchMessage.value = error.response
       ? '景点查询失败，请稍后重试'
       : '无法连接后端服务'
@@ -357,6 +374,7 @@ const updateRoute = () => {
     : emptyRoute()
 
   map?.getSource('route-line')?.setData(routeData)
+  map?.getSource('route-stops')?.setData(routeStopCollection())
 }
 
 const applyAiPlan = (plan) => {
@@ -374,7 +392,7 @@ const applyAiPlan = (plan) => {
   showFavoritesOnly.value = false
   selectedRoutePlaces.value = features
   searchResults.value = features
-  map?.getSource('places')?.setData({ type: 'FeatureCollection', features })
+  setVisiblePlaces({ type: 'FeatureCollection', features })
   clearPopup()
   updateRoute()
   const road = plan.route
@@ -387,6 +405,7 @@ const applyAiPlan = (plan) => {
     roadTravelMinutes.value = road.duration_minutes
     routeKind.value = 'valhalla'
   }
+  map?.getSource('route-stops')?.setData(routeStopCollection())
   frameResults(features)
 }
 
@@ -475,7 +494,7 @@ const selectTheme = (theme) => {
   const collection = { type: 'FeatureCollection', features }
 
   searchResults.value = features
-  map?.getSource('places')?.setData(collection)
+  setVisiblePlaces(collection)
   selectedRoutePlaces.value = features
   updateRoute()
   searchMessage.value = features.length ? '' : '该主题暂无景点'
@@ -543,6 +562,11 @@ const showPopup = (feature) => {
 }
 
 const highlightSelectedPlace = (placeId) => {
+  const candidates = [...(allPlacesCache?.features ?? []),
+    ...searchResults.value, ...selectedRoutePlaces.value]
+  const place = candidates.find(feature => feature.properties?.id === placeId)
+  map?.getSource('selected-place')?.setData(place
+    ? { type: 'FeatureCollection', features: [place] } : emptyPlaces())
   if (!map?.getLayer('places-points')) return
 
   map.setPaintProperty('places-points', 'circle-radius', [
@@ -600,9 +624,10 @@ const frameResults = (features) => {
 
 const setMapDisplayMode = (mode) => {
   if (!map?.getLayer('places-points') || !map.getLayer('places-heatmap')) return
-
   mapDisplayMode.value = mode
-  map.setLayoutProperty('places-points', 'visibility', mode === 'points' ? 'visible' : 'none')
+  for (const layer of ['places-points', 'places-clusters', 'places-cluster-count']) {
+    map.setLayoutProperty(layer, 'visibility', mode === 'points' ? 'visible' : 'none')
+  }
   map.setLayoutProperty('places-heatmap', 'visibility', mode === 'heatmap' ? 'visible' : 'none')
 }
 
@@ -669,7 +694,7 @@ const loadPlaces = async (nearby = false, currentArea = false) => {
       refreshTourismGrid()
     }
     searchResults.value = features
-    map.getSource('places').setData(response.data)
+    setVisiblePlaces(response.data)
 
     if (!features.length) {
       searchMessage.value = nearby
@@ -696,7 +721,7 @@ const loadPlaces = async (nearby = false, currentArea = false) => {
     if (controller.signal.aborted || axios.isCancel(error)) return
 
     searchResults.value = []
-    map?.getSource('places')?.setData(emptyPlaces())
+    setVisiblePlaces(emptyPlaces())
 
     searchMessage.value = error.response
       ? '景点查询失败，请稍后重试'
@@ -724,6 +749,8 @@ onMounted(() => {
     container: mapContainer.value,
     style: {
       version: 8,
+      // Glyphs are required for numbered cluster and itinerary marker labels.
+      glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
       sources: {
           osm: {
               type: 'raster',
@@ -752,18 +779,47 @@ onMounted(() => {
   )
   map.once('load', () => {
     map.addSource('places', { type: 'geojson', data: emptyPlaces() })
+    map.addSource('places-clusters', {
+      type: 'geojson', data: emptyPlaces(),
+      cluster: true, clusterMaxZoom: 13, clusterRadius: 48
+    })
+    map.addSource('route-stops', { type: 'geojson', data: emptyPlaces() })
+    map.addSource('selected-place', { type: 'geojson', data: emptyPlaces() })
     map.addSource('route-line', { type: 'geojson', data: emptyRoute() })
     map.addSource('cultural-line', { type: 'geojson', data: emptyCulturalLine() })
     map.addSource('tourism-grid', { type: 'geojson', data: emptyTourismGrid() })
     map.addLayer({
+      id: 'places-clusters',
+      type: 'circle', source: 'places-clusters',
+      filter: ['has', 'point_count'],
+      paint: {
+        'circle-radius': ['step', ['get', 'point_count'], 17, 10, 21, 30, 26],
+        'circle-color': ['step', ['get', 'point_count'],
+          '#2a68c1', 10, '#2257a4', 30, '#184477'],
+        'circle-stroke-color': '#fff', 'circle-stroke-width': 2,
+        'circle-opacity': 0.93
+      }
+    })
+    map.addLayer({
+      id: 'places-cluster-count', type: 'symbol', source: 'places-clusters',
+      filter: ['has', 'point_count'],
+      layout: {
+        'text-field': ['get', 'point_count_abbreviated'],
+        'text-font': ['Open Sans Semibold'], 'text-size': 13,
+        'text-allow-overlap': true
+      },
+      paint: { 'text-color': '#fff' }
+    })
+    map.addLayer({
       id: 'places-points',
       type: 'circle',
-      source: 'places',
+      source: 'places-clusters',
+      filter: ['!', ['has', 'point_count']],
       paint: {
-        'circle-radius': 12,
-        'circle-color': '#ff0000',
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 5, 12, 7, 15, 9],
+        'circle-color': '#eb654b',
         'circle-stroke-color': '#ffffff',
-        'circle-stroke-width': 3
+        'circle-stroke-width': 2
       }
     })
     map.addLayer({
@@ -803,6 +859,33 @@ onMounted(() => {
         'line-color': '#2563eb',
         'line-width': 5,
         'line-opacity': 0.85
+      }
+    })
+    map.addLayer({
+      id: 'route-stop-circles',
+      type: 'circle', source: 'route-stops',
+      paint: {
+        'circle-radius': 13, 'circle-color': '#1d4ed8',
+        'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2.5
+      }
+    })
+    map.addLayer({
+      id: 'route-stop-numbers',
+      type: 'symbol', source: 'route-stops',
+      layout: {
+        'text-field': ['to-string', ['get', 'stop_order']],
+        'text-font': ['Open Sans Semibold'], 'text-size': 13,
+        'text-allow-overlap': true, 'text-ignore-placement': true
+      },
+      paint: { 'text-color': '#ffffff' }
+    })
+    map.addLayer({
+      id: 'selected-place-halo',
+      type: 'circle', source: 'selected-place',
+      paint: {
+        'circle-radius': 20, 'circle-color': '#ffbb40',
+        'circle-opacity': 0.24,
+        'circle-stroke-color': '#f59e0b', 'circle-stroke-width': 3
       }
     })
     map.addLayer({
@@ -846,6 +929,32 @@ onMounted(() => {
         'line-opacity': 0.8
       }
     })
+    map.on('click', 'places-clusters', async (event) => {
+      if (gridAnalysisVisible.value) return
+      const clusterId = event.features?.[0]?.properties?.cluster_id
+      const coordinate = event.features?.[0]?.geometry?.coordinates
+      if (!Number.isInteger(clusterId) || !Array.isArray(coordinate)) return
+      const source = map?.getSource('places-clusters')
+      if (!source?.getClusterExpansionZoom) return
+      try {
+        const zoom = await source.getClusterExpansionZoom(clusterId)
+        if (!map || !Number.isFinite(zoom)) return
+        map.easeTo({ center: coordinate, zoom: Math.min(zoom, 16) })
+      } catch {
+        // Source may be replaced between clicks and cluster expansion.
+      }
+    })
+    map.on('mouseenter', 'places-clusters', () => {
+      map.getCanvas().style.cursor = 'zoom-in'
+    })
+    map.on('mouseleave', 'places-clusters', () => {
+      map.getCanvas().style.cursor = ''
+    })
+    map.on('click', 'route-stop-circles', (event) => {
+      if (gridAnalysisVisible.value) return
+      const feature = event.features?.[0]
+      if (feature) openPlaceDetail(feature)
+    })
     map.on('click', 'places-points', (e) => {
       if (gridAnalysisVisible.value) return
 
@@ -860,6 +969,20 @@ onMounted(() => {
     })
     map.on('mouseleave', 'places-points', () => {
       map.getCanvas().style.cursor = ''
+    })
+    let hoverPopup = null
+    map.on('mouseenter', 'places-points', event => {
+      const poi = event.features?.[0]
+      if (!poi || !map) return
+      hoverPopup?.remove()
+      hoverPopup = new Popup({ closeButton: false, closeOnClick: false, offset: 14 })
+        .setLngLat(poi.geometry.coordinates)
+        .setText(poi.properties.name || '景点')
+        .addTo(map)
+    })
+    map.on('mouseleave', 'places-points', () => {
+      hoverPopup?.remove()
+      hoverPopup = null
     })
     map.on('click', 'tourism-grid-fill', (event) => {
       const feature = event.features?.[0]
@@ -1031,6 +1154,10 @@ onUnmounted(() => {
             @click.stop="toggleFavorite(feature)"
           >{{ isFavorite(feature.properties.id) ? '★' : '☆' }}</button>
           <strong>{{ feature.properties.name }}</strong>
+          <span v-if="selectedRoutePlaces.some(p => p.properties.id === feature.properties.id)"
+            class="route-order-pill"
+            :title="'行程第 ' + (selectedRoutePlaces.findIndex(p => p.properties.id === feature.properties.id) + 1) + ' 站'"
+          >第 {{ selectedRoutePlaces.findIndex(p => p.properties.id === feature.properties.id) + 1 }} 站</span>
           <div>{{ feature.properties.category }}</div>
         </div>
       </div>
@@ -1096,6 +1223,7 @@ onUnmounted(() => {
             :route-kind="routeKind"
             :road-travel-minutes="roadTravelMinutes"
             @clear="clearRoute"
+            @focus-place="focusResult"
           />
         </div>
         <div v-show="activeWorkspaceTab === 'themes'" class="workspace-slot" role="tabpanel">
@@ -1225,6 +1353,8 @@ body { overflow: hidden; font-family: Inter, 'Segoe UI', 'Microsoft YaHei', sans
 .result-item > div {margin-top:4px;font-size:12px;color:#8492a6;}
 .result-item-selected {background:#eaf2ff;}
 .result-item-route-selected {border-left:3px solid #2563eb;padding-left:13px;}
+.route-order-pill {display:inline-flex;margin-top:6px;padding:2px 7px;border-radius:12px;
+  background:#e2edff;color:#1955a4;font-size:11px;font-weight:700;}
 .favorite-toggle {position:absolute;right:12px;top:12px;cursor:pointer;border:0;background:none;
   font-size:22px;color:#e8a018;padding:2px;line-height:1;}
 .explorer-empty {padding:20px 16px;color:#66758d;font-size:13px;}
