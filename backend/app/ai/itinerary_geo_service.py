@@ -10,7 +10,17 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
 
-def fetch_candidates(connection_factory, limit=200):
+def database_connection():
+    """Load database credentials from the running server environment only."""
+    import psycopg2
+    return psycopg2.connect(
+        host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"),
+        dbname=os.getenv("DB_NAME"), user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD")
+    )
+
+
+def fetch_candidates(connection_factory=database_connection, limit=200):
     connection = connection_factory()
     cursor = connection.cursor()
     try:
