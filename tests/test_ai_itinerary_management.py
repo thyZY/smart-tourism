@@ -37,7 +37,7 @@ class FakeClient:
 
 class ItineraryTests(unittest.TestCase):
     def test_fallback_no_key_never_invents_poi_or_road(self):
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, {"VALHALLA_URL": "https://invalid.example"}, clear=True):
             result = ItineraryPlanner().generate(
                 "南京", candidates=SAMPLE, max_stops=3)
         self.assertEqual(result["planning_method"], "local_rule_fallback")
@@ -125,7 +125,7 @@ class ItineraryTests(unittest.TestCase):
                 self.request = request
                 return Response()
         opener = FakeOpener()
-        with patch.object(geo, "request_opener", return_value=opener):
+        with patch.dict(os.environ, {"VALHALLA_URL": "http://127.0.0.1:8002"}), patch.object(geo, "request_opener", return_value=opener):
             route = geo.valhalla_route(
                 SAMPLE[:2], endpoint="http://127.0.0.1:8002")
         self.assertEqual(route["status"], "verified_by_routing_service")
