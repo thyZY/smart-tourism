@@ -52,7 +52,7 @@ const context = vm.createContext({
     write: s=>{printed+=s},close() {}},focus() {},print() {}
   }) }
 })
-vm.runInContext(script + '\nthis.testApi={request,result,preview,saved,error,notice,generate,apply,save,restore,removeSaved,invalidateCurrent,exportRoad,exportJson,printReport};',context)
+vm.runInContext(script + '\nthis.testApi={request,result,preview,saved,error,notice,generate,apply,confirmPreview,save,restore,removeSaved,invalidateCurrent,exportRoad,exportJson,printReport};',context)
 const api=context.testApi
 
 await api.generate()
@@ -69,8 +69,10 @@ assert.deepEqual(JSON.parse(store.get('smart-tourism-saved-itineraries-v1'))[0].
 await api.generate(true)
 assert.equal(api.preview.value.stops.length,3)
 assert.equal(events.length,1,'optimization is not auto applied to map')
-api.apply(api.preview.value)
+api.confirmPreview()
 assert.equal(events.length,2,'user confirmation applies preview')
+api.confirmPreview()
+assert.equal(events.length,2,'confirmed preview cannot apply twice')
 failure = true
 await api.restore(api.saved.value[0])
 assert.equal(api.result.value.stops.length,3,'failed restore preserves existing itinerary')
@@ -86,6 +88,8 @@ assert.ok(!printed.includes('<img src=x onerror='))
 api.exportJson()
 assert.equal(downloads.length,1)
 api.invalidateCurrent()
+api.confirmPreview()
+assert.equal(events.length,3,'stale preview confirmation does not alter the map')
 assert.equal(api.result.value, null, 'manual map modification invalidates stale AI plan')
 assert.equal(api.preview.value, null, 'manual edits invalidate unconfirmed previews')
 assert.match(api.notice.value, /旧AI方案已失效/)
