@@ -7,7 +7,9 @@ defineProps({
   distanceKm: {
     type: Number,
     required: true
-  }
+  },
+  routeKind: { type: String, default: 'straight_line_preview' },
+  roadTravelMinutes: { type: Number, default: null }
 })
 
 defineEmits(['clear'])
@@ -32,7 +34,13 @@ defineEmits(['clear'])
         {{ place.properties.name }}
       </li>
     </ol>
-    <p class="route-distance">总距离：{{ distanceKm.toFixed(1) }} km</p>
+    <p class="route-distance">
+      {{ routeKind === 'valhalla' ? 'Valhalla道路距离' : '景点间直线距离（非导航）' }}：
+      {{ distanceKm.toFixed(1) }} km
+    </p>
+    <p v-if="routeKind === 'valhalla' && roadTravelMinutes !== null">
+      道路预计交通：{{ roadTravelMinutes.toFixed(1) }} 分钟
+    </p>
   </aside>
 </template>
 
