@@ -35,7 +35,7 @@ defineEmits(['clear', 'focus-place', 'calculate-road'])
       </button>
     </div>
 
-    <p>已选择：{{ places.length }} 个景点</p>
+    <div class="route-count-strip"><span class="route-count-pill">{{ places.length }}</span><span>个景点已加入路线</span><span class="route-type-pill">{{ routeKind === "valhalla" ? "路网已计算" : "直线预览" }}</span></div>
     <ol v-if="places.length" class="route-places">
       <li v-for="(place, index) in places" :key="place.properties.id">
         <button type="button" class="route-stop-focus" :aria-label="'在地图上定位第 ' + (index + 1) + ' 站 ' + place.properties.name"
@@ -64,15 +64,15 @@ defineEmits(['clear', 'focus-place', 'calculate-road'])
       </button>
       <p v-if="roadError" role="alert">{{ roadError }}</p>
       <p v-if="routeKind === 'valhalla'">当前道路模式：{{ {pedestrian:'步行',bicycle:'骑行',auto:'驾车'}[roadMode] }}{{ roadOptimized ? ' · 已按路网时间优化顺序' : '' }}</p>
-      <small>只连接已配置的本机 Valhalla；估算时间非实时导航。</small>
+      <small>道路数据来自已配置的 Valhalla 服务（可使用公网演示节点）；时间为估算值，非实时导航。</small>
     </div>
-    <p class="route-distance">
+    <div class="route-metric-card"><span class="route-metric-label">{{ routeKind === "valhalla" ? "ROAD DISTANCE" : "STRAIGHT LINE" }}</span><p class="route-distance">
       {{ routeKind === 'valhalla' ? 'Valhalla道路距离' : '景点间直线距离（非导航）' }}：
       {{ distanceKm.toFixed(1) }} km
     </p>
-    <p v-if="routeKind === 'valhalla' && roadTravelMinutes !== null">
-      道路预计交通：{{ roadTravelMinutes.toFixed(1) }} 分钟
-    </p>
+    <p class="route-time" v-if="routeKind === 'valhalla' && roadTravelMinutes !== null">
+      预计交通：<strong>{{ roadTravelMinutes.toFixed(1) }} 分钟</strong>
+    </p></div>
   </aside>
 </template>
 
@@ -157,4 +157,26 @@ h2 {
 .route-road-controls button:disabled{opacity:.5;cursor:not-allowed}
 .route-road-controls small{color:#64748b;font-size:11px}
 .route-road-controls [role="alert"]{color:#b42318;font-size:12px}
+
+.route-panel{font-family:system-ui,"Microsoft YaHei","PingFang SC",sans-serif;color:#1b344f}
+.route-panel-header h2{font-size:16px;font-weight:750;color:#172e4b}
+.route-count-strip{display:flex;align-items:center;gap:8px;padding:11px;margin:12px 0;border-radius:10px;background:#eff5fe;color:#425c7f;font-size:12px}
+.route-count-pill{display:grid;place-items:center;min-width:27px;height:27px;border-radius:9px;color:white;background:#2663ba;font-size:14px;font-weight:800}
+.route-type-pill{margin-left:auto;border:1px solid #d0def2;border-radius:50px;padding:3px 6px;color:#2e64ad;background:white;font-size:10px;white-space:nowrap}
+.route-places{max-height:260px;display:grid;gap:6px}
+.route-stop-focus{padding:9px 10px;border-radius:10px;transition:background .15s,transform .15s}
+.route-stop-focus:hover{transform:translateX(2px)}
+.route-stop-focus:focus-visible,.route-panel button:focus-visible,.route-panel select:focus-visible{outline:2px solid #4289e8;outline-offset:2px}
+.route-stop-number{border:2px solid white;box-shadow:0 1px 4px #123c7333}
+.route-road-controls{background:#f8fbff;border-color:#dce8f7;border-radius:12px;padding:13px 11px;gap:11px}
+.route-road-controls button{border-radius:8px;background:#215fc5;color:#fff;border-color:#215fc5;font-weight:650;min-height:36px}
+.route-road-controls button:hover:not(:disabled){background:#174f9f}
+.route-road-controls label{font-weight:600;color:#435b76}
+.route-road-controls input[type="checkbox"]{accent-color:#2563c9}
+.route-road-controls small{line-height:1.6}
+.route-metric-card{margin-top:11px;padding:12px 11px;background:linear-gradient(145deg,#eef5ff,#fbfdff);border:1px solid #d7e7fa;border-radius:11px}
+.route-metric-label{font-size:10px;letter-spacing:1px;font-weight:800;color:#7091bf}
+.route-distance{padding-top:5px;border:0;font-size:14px;color:#1d3c64}
+.route-time{margin-top:6px!important;color:#456181;font-size:12px}
+.route-time strong{color:#1954a7}
 </style>
