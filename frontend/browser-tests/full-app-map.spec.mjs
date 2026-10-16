@@ -71,17 +71,19 @@ test('complete map + AI itinerary + route workspace flow', async ({ page }) => {
   await expect(page.locator('.map canvas')).toBeVisible()
 })
 
-test('manual route edit invalidates stale AI state while map remains usable', async ({ page }) => {
+test('manual POI route edit invalidates stale AI state while map remains usable', async ({ page }) => {
   await page.getByRole('button', { name: '生成并加载到地图' }).click()
   await expect(page.getByText('当前行程 · 数据库景点')).toBeVisible({ timeout: 15000 })
+  await expect(page.getByRole('navigation', { name: '行程工作台快捷导航' })).toBeVisible()
 
-  await page.getByRole('button', { name: '我的路线', exact: true }).click()
-  const first = page.getByRole('button', { name: /在地图上定位第 1 站/ })
-  await expect(first).toBeVisible()
-  // The explorer remains the authoritative manual selection surface.
-  await page.getByRole('button', { name: '隐藏景点' }).click()
-  await page.getByRole('button', { name: '景点列表' }).click()
   await page.locator('[data-place-id="1"]').click()
+  await expect(page.getByRole('region', { name: '景点详情' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '移出路线' })).toBeVisible()
+  await page.getByRole('button', { name: '移出路线' }).click()
+
+  // A manual route edit invalidates the stale AI plan, but the MapLibre map remains mounted.
+  await expect(page.getByText('地图路线已被手动修改；旧AI方案已失效')).toBeVisible()
+  await expect(page.getByRole('navigation', { name: '行程工作台快捷导航' })).toHaveCount(0)
   await expect(page.locator('.map canvas')).toBeVisible()
 })
 
