@@ -40,10 +40,14 @@ class ValhallaConfigTests(unittest.TestCase):
             "VALHALLA_USE_ENV_PROXY": "",
         }):
             opener = request_opener()
-        proxy_handler = next(
+
+        # ProxyHandler({}) has no scheme-specific proxy_open methods, so
+        # urllib's build_opener does not register it. Its absence is the
+        # expected default bypass behavior; do not require an empty handler.
+        proxy_handlers = [
             h for h in opener.handlers if isinstance(h, ProxyHandler)
-        )
-        self.assertEqual(proxy_handler.proxies, {})
+        ]
+        self.assertEqual(proxy_handlers, [])
 
     def test_environment_proxy_can_be_enabled_explicitly(self):
         with patch.dict(os.environ, {
