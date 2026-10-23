@@ -1,11 +1,11 @@
-"""Offline checks for the fixed Valhalla demo allowlist and no redirects."""
+"""Offline checks for the fixed Valhalla demo allowlist and proxy policy."""
 import os
 import sys
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError
-from urllib.request import Request
+from urllib.request import Request, ProxyHandler
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 from app.ai.valhalla_config import PUBLIC_ORIGIN, valhalla_root, request_opener
@@ -32,6 +32,30 @@ class ValhallaConfigTests(unittest.TestCase):
         ):
             with self.subTest(value=value), patch.dict(os.environ, {"VALHALLA_URL": value}):
                 self.assertEqual(valhalla_root(), expected)
+
+    def test_environment_proxy_is_bypassed_by_default(self):
+        with patch.dict(os.environ, {
+            "http_proxy": "http://127.0.0.1:7890",
+            "https_proxy": "http://127.0.0.1:7890",
+            "VALHALLA_USE_ENV_PROXY": "",
+        }):
+            opener = request_opener()
+        proxy_handler = next(
+            h for h in opener.handlers if isinstance(h, ProxyHandler)
+        )
+        self.assertEqual(proxy_handler.proxies, {})
+
+    def test_environment_proxy_can_be_enabled_explicitly(self):
+        with patch.dict(os.environ, {
+            "http_proxy": "http://127.0.0.1:7890",
+            "https_proxy": "http://127.0.0.1:7890",
+            "VALHALLA_USE_ENV_PROXY": "1",
+        }):
+            opener = request_opener()
+        proxy_handler = next(
+            h for h in opener.handlers if isinstance(h, ProxyHandler)
+        )
+        self.assertEqual(proxy_handler.proxies.get("https"), "http://127.0.0.1:7890")
 
     def test_redirects_are_not_followed(self):
         opener = request_opener()
