@@ -5,7 +5,13 @@ unapproved hosts. Only the trusted backend chooses the URL, never a browser.
 """
 import os
 from urllib.parse import urlsplit
-from urllib.request import build_opener, HTTPHandler, HTTPSHandler, HTTPRedirectHandler
+from urllib.request import (
+    build_opener,
+    HTTPHandler,
+    HTTPSHandler,
+    HTTPRedirectHandler,
+    ProxyHandler,
+)
 
 PUBLIC_ORIGIN = "https://valhalla1.openstreetmap.de"
 PUBLIC_HOSTS = {"valhalla1.openstreetmap.de"}
@@ -38,6 +44,18 @@ class NoRedirect(HTTPRedirectHandler):
 
 
 def request_opener():
-    # Disallow HTTP redirects: prevent an allowlisted server from forwarding
-    # a request to untrusted networks, including internal services.
-    return build_opener(HTTPHandler(), HTTPSHandler(), NoRedirect())
+    """Build the Valhalla-only opener with explicit proxy policy.
+
+    The local machine's configured HTTP(S) proxy has been observed to time out
+    for the allowlisted public Valhalla endpoint while a direct HTTPS request
+    succeeds. Direct access is therefore the default for this routing client.
+    Set VALHALLA_USE_ENV_PROXY=1 to opt back into Python's environment proxy
+    settings on networks that require an outbound proxy.
+    """
+    use_env_proxy = os.getenv("VALHALLA_USE_ENV_PROXY", "").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+    proxy_handler = ProxyHandler() if use_env_proxy else ProxyHandler({})
+    # Disallow redirects: do not allow an allowlisted server to forward requests
+    # to unapproved hosts or internal services.
+    return build_opener(proxy_handler, HTTPHandler(), HTTPSHandler(), NoRedirect())
