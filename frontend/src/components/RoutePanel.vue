@@ -16,10 +16,11 @@ defineProps({
   roadMode: { type: String, default: 'pedestrian' },
   roadLoading: { type: Boolean, default: false },
   roadError: { type: String, default: '' },
-  roadOptimized: { type: Boolean, default: false }
+  roadOptimized: { type: Boolean, default: false },
+  roadExportAvailable: { type: Boolean, default: false }
 })
 
-defineEmits(['clear', 'focus-place', 'calculate-road'])
+const emit = defineEmits(['clear', 'focus-place', 'calculate-road', 'export-road', 'export-itinerary'])
 </script>
 
 <template>
@@ -73,6 +74,15 @@ defineEmits(['clear', 'focus-place', 'calculate-road'])
     <p class="route-time" v-if="routeKind === 'valhalla' && roadTravelMinutes !== null">
       预计交通：<strong>{{ roadTravelMinutes.toFixed(1) }} 分钟</strong>
     </p></div>
+    <div class="route-export-actions">
+      <button type="button" :disabled="!roadExportAvailable" @click="emit('export-road')">
+        导出道路 GeoJSON
+      </button>
+      <button type="button" :disabled="places.length === 0"
+        @click="emit('export-itinerary', selectedMode)">
+        导出当前行程 JSON
+      </button>
+    </div>
   </aside>
 </template>
 
@@ -179,4 +189,7 @@ h2 {
 .route-distance{padding-top:5px;border:0;font-size:14px;color:#1d3c64}
 .route-time{margin-top:6px!important;color:#456181;font-size:12px}
 .route-time strong{color:#1954a7}
+.route-export-actions{display:grid;grid-template-columns:1fr;gap:7px;margin-top:10px}
+.route-export-actions button{padding:8px;color:#164c9a;background:#fff;border:1px solid #bad3fa;border-radius:6px;cursor:pointer}
+.route-export-actions button:disabled{cursor:not-allowed;opacity:.5}
 </style>

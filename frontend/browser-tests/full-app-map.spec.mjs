@@ -25,7 +25,7 @@ test.beforeEach(async ({ page }) => {
       status: 200, contentType: 'application/json',
       body: JSON.stringify({
         status: 'verified_by_routing_service',
-        provider: 'e2e-fixture',
+        provider: 'Valhalla',
         mode: 'pedestrian',
         distance_km: 3.7,
         duration_minutes: 26.5,
@@ -52,10 +52,10 @@ test('complete map + AI itinerary + route workspace flow', async ({ page }) => {
   await page.getByRole('button', { name: '生成并加载到地图' }).click()
   await expect(page.getByText('当前行程 · 数据库景点')).toBeVisible({ timeout: 15000 })
   await expect(page.locator('.map-route-status')).toContainText('Valhalla')
-  await expect(page.getByRole('button', { name: '我的路线', exact: true })).toBeVisible()
+  await expect(page.getByRole('tab', { name: '我的路线', exact: true })).toBeVisible()
 
-  await page.getByRole('button', { name: '我的路线', exact: true }).click()
-  await expect(page.getByRole('region', { name: '我的路线' })).toBeVisible()
+  await page.getByRole('tab', { name: '我的路线', exact: true }).click()
+  await expect(page.locator('aside[aria-label="我的路线"]')).toBeVisible()
   await expect(page.getByText('路网已计算')).toBeVisible()
   await expect(page.getByText('ROAD DISTANCE')).toBeVisible()
 
@@ -66,7 +66,7 @@ test('complete map + AI itinerary + route workspace flow', async ({ page }) => {
   await expect(page.getByText('预计交通：')).toBeVisible()
   await expect(page.getByText(/26.5/)).toBeVisible()
 
-  await page.getByRole('button', { name: 'AI 行程', exact: true }).click()
+  await page.getByRole('tab', { name: 'AI 行程', exact: true }).click()
   await expect(page.getByRole('navigation', { name: '行程工作台快捷导航' })).toBeVisible()
   await expect(page.locator('.map canvas')).toBeVisible()
 })
@@ -76,12 +76,13 @@ test('manual POI route edit invalidates stale AI state while map remains usable'
   await expect(page.getByText('当前行程 · 数据库景点')).toBeVisible({ timeout: 15000 })
   await expect(page.getByRole('navigation', { name: '行程工作台快捷导航' })).toBeVisible()
 
-  await page.locator('[data-place-id="1"]').click()
-  await expect(page.getByRole('region', { name: '景点详情' })).toBeVisible()
+  await page.locator('.result-item[data-place-id]').first().click()
+  await expect(page.locator('aside[aria-label="景点详情"]')).toBeVisible()
   await expect(page.getByRole('button', { name: '移出路线' })).toBeVisible()
   await page.getByRole('button', { name: '移出路线' }).click()
 
   // A manual route edit invalidates the stale AI plan, but the MapLibre map remains mounted.
+  await page.getByRole('tab', { name: 'AI 行程', exact: true }).click()
   await expect(page.getByText('地图路线已被手动修改；旧AI方案已失效')).toBeVisible()
   await expect(page.getByRole('navigation', { name: '行程工作台快捷导航' })).toHaveCount(0)
   await expect(page.locator('.map canvas')).toBeVisible()
