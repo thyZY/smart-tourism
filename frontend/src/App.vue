@@ -25,6 +25,7 @@ const selectedCategory = ref('')
 const mapDisplayMode = ref('points')
 const selectedRoutePlaces = ref([])
 const routeDistanceKm = ref(0)
+const currentVerifiedRoad = ref(null)
 const aiPanelRef = ref(null)
 const invalidateAiPanel = () => aiPanelRef.value?.invalidateCurrent?.()
 const routeKind = ref('straight_line_preview')
@@ -96,6 +97,74 @@ const loading = ref(false)
 const mapReady = ref(false)
 let requestController = null
 const emptyPlaces = () => ({ type: 'FeatureCollection', features: [] })
+const isVerifiedValhallaRoute = (route) => {
+  const coordinates = route?.geojson?.features?.[0]?.geometry?.coordinates
+  return route?.status === 'verified_by_routing_service' &&
+    route?.provider === 'Valhalla' &&
+    route.geojson?.type === 'FeatureCollection' &&
+    route.geojson.features?.[0]?.geometry?.type === 'LineString' &&
+    Array.isArray(coordinates) && coordinates.length >= 2 &&
+    coordinates.every(point => Array.isArray(point) && point.length >= 2 &&
+      point.slice(0, 2).every(Number.isFinite)) &&
+    Number.isFinite(route.distance_km) && route.distance_km >= 0 &&
+    Number.isFinite(route.duration_minutes) && route.duration_minutes >= 0
+}
+
+const downloadJsonFile = (data, filename, mediaType) => {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: mediaType })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+const exportCurrentRoadGeoJson = () => {
+  if (!currentVerifiedRoad.value) return
+  downloadJsonFile(
+    currentVerifiedRoad.value.geojson,
+    'smart-tourism-current-route.geojson',
+    'application/geo+json'
+  )
+}
+
+const exportCurrentItineraryJson = (selectedMode) => {
+  if (!selectedRoutePlaces.value.length) return
+  const road = currentVerifiedRoad.value
+  const places = selectedRoutePlaces.value.map((place, index) => ({
+    id: place.properties.id,
+    name: place.properties.name,
+    category: place.properties.category,
+    order: index + 1
+  }))
+  const document = {
+    schema_version: 1,
+    title: '当前路线',
+    stops: places,
+    ordered_place_ids: places.map(place => place.id),
+    travel_mode: road?.mode ?? selectedMode,
+    route: road ? {
+      status: road.status,
+      provider: road.provider,
+      distance_km: road.distance_km,
+      duration_minutes: road.duration_minutes,
+      optimized: road.optimized,
+      geojson: road.geojson
+    } : {
+      status: 'unverified',
+      provider: null,
+      distance_km: null,
+      duration_minutes: null,
+      optimized: false
+    },
+    data_source_note: road
+      ? '景点来自当前数据库记录；道路几何与距离、耗时来自 Valhalla 路网估算，非实时导航。'
+      : '景点来自当前数据库记录；路线尚未通过道路服务核验，不包含道路几何、距离或耗时。'
+  }
+  downloadJsonFile(document, 'smart-tourism-current-itinerary.json', 'application/json')
+}
+
 // Raw POIs remain intact for heatmaps; only the point display is clustered.
 const setVisiblePlaces = (collection) => {
   map?.getSource('places')?.setData(collection)
@@ -346,6 +415,7 @@ const updateRoute = () => {
   roadRequestSequence += 1
   roadLoading.value = false
   roadError.value = ''
+  currentVerifiedRoad.value = null
   roadOptimized.value = false
   routeKind.value = 'straight_line_preview'
   roadTravelMinutes.value = null
@@ -379,6 +449,20 @@ const updateRoute = () => {
 let roadRequestSequence = 0
 const calculateSelectedRoad = async ({ mode, optimize }) => {
   if (roadLoading.value || selectedRoutePlaces.value.length < 2) return
+  currentVerifiedRoad.value = null
+  routeKind.value = 'straight_line_preview'
+  roadTravelMinutes.value = null
+  roadOptimized.value = false
+  const previewCoordinates = selectedRoutePlaces.value
+    .map(place => place.geometry?.coordinates)
+    .filter(coordinates => Array.isArray(coordinates))
+  routeDistanceKm.value = previewCoordinates.slice(1).reduce(
+    (total, current, index) => total + calculateDistanceKm(previewCoordinates[index], current), 0
+  )
+  map?.getSource('route-line')?.setData(previewCoordinates.length >= 2 ? {
+    type: 'FeatureCollection',
+    features: [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: previewCoordinates } }]
+  } : emptyRoute())
   const seq = ++roadRequestSequence
   const ids = selectedRoutePlaces.value.map(p => p.properties.id)
   roadLoading.value = true
@@ -390,12 +474,15 @@ const calculateSelectedRoad = async ({ mode, optimize }) => {
     if (seq !== roadRequestSequence ||
         ids.join(',') !== selectedRoutePlaces.value.map(p => p.properties.id).join(',')) return
     const data = response.data
-    if (data.status !== 'verified_by_routing_service' ||
-        data.geojson?.type !== 'FeatureCollection') {
+    if (!isVerifiedValhallaRoute(data)) {
       roadError.value = data.message || '道路服务不可用，继续显示直线预览'
       return
     }
-    if (optimize && Array.isArray(data.ordered_place_ids)) {
+    if (optimize && selectedRoutePlaces.value.length >= 3) {
+      if (!Array.isArray(data.ordered_place_ids)) {
+        roadError.value = '道路服务未返回优化后的站点顺序；保留直线预览'
+        return
+      }
       const places = selectedRoutePlaces.value
       if (data.ordered_place_ids.length !== ids.length ||
           new Set(data.ordered_place_ids).size !== ids.length ||
@@ -411,10 +498,20 @@ const calculateSelectedRoad = async ({ mode, optimize }) => {
     routeDistanceKm.value = data.distance_km
     roadTravelMinutes.value = data.duration_minutes
     routeKind.value = 'valhalla'
-    roadMode.value = mode
+    roadMode.value = data.mode || mode
     roadOptimized.value = Boolean(data.optimized)
+    currentVerifiedRoad.value = {
+      status: data.status,
+      provider: data.provider,
+      ordered_place_ids: selectedRoutePlaces.value.map(place => place.properties.id),
+      mode: data.mode || mode,
+      distance_km: data.distance_km,
+      duration_minutes: data.duration_minutes,
+      optimized: Boolean(data.optimized),
+      geojson: data.geojson
+    }
   } catch {
-    if (seq === roadRequestSequence) roadError.value = '道路计算失败，保留当前线路'
+    if (seq === roadRequestSequence) roadError.value = '道路计算失败，继续显示直线预览'
   } finally {
     if (seq === roadRequestSequence) roadLoading.value = false
   }
@@ -447,6 +544,18 @@ const applyAiPlan = (plan) => {
     routeDistanceKm.value = road.distance_km
     roadTravelMinutes.value = road.duration_minutes
     routeKind.value = 'valhalla'
+    if (isVerifiedValhallaRoute(road)) {
+      currentVerifiedRoad.value = {
+        status: road.status,
+        provider: road.provider,
+        ordered_place_ids: selectedRoutePlaces.value.map(place => place.properties.id),
+        mode: road.mode || plan.mode || 'pedestrian',
+        distance_km: road.distance_km,
+        duration_minutes: road.duration_minutes,
+        optimized: Boolean(road.optimized),
+        geojson: road.geojson
+      }
+    }
   }
   map?.getSource('route-stops')?.setData(routeStopCollection())
   frameResults(features)
@@ -1269,7 +1378,10 @@ onUnmounted(() => {
             :road-loading="roadLoading"
             :road-error="roadError"
             :road-optimized="roadOptimized"
+            :road-export-available="Boolean(currentVerifiedRoad)"
             @calculate-road="calculateSelectedRoad"
+            @export-road="exportCurrentRoadGeoJson"
+            @export-itinerary="exportCurrentItineraryJson"
             @clear="clearRoute"
             @focus-place="focusResult"
           />

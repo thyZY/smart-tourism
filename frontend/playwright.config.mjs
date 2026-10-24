@@ -1,14 +1,20 @@
 import { defineConfig, devices } from '@playwright/test'
 
+const runId = new Date().toISOString().replace(/[:.]/g, '-')
+const reportRoot = process.env.PLAYWRIGHT_REPORT_ROOT || `test-results/runs/${runId}`
+const proxyServer = process.env.PLAYWRIGHT_PROXY_SERVER?.trim()
+
 export default defineConfig({
   testDir: './browser-tests',
   timeout: 30000,
   retries: 1,
-  reporter: [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]],
+  outputDir: `${reportRoot}/artifacts`,
+  reporter: [['list'], ['html', { open: 'never', outputFolder: `${reportRoot}/html-report` }]],
   use: {
     baseURL: 'http://127.0.0.1:5173',
     trace: 'retain-on-failure',
-    screenshot: 'only-on-failure'
+    screenshot: 'only-on-failure',
+    ...(proxyServer ? { launchOptions: { proxy: { server: proxyServer } } } : {})
   },
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1366, height: 768 } } },
