@@ -160,6 +160,9 @@ test('real POIs, OSM basemap, and optimized Valhalla road render in MapLibre', a
   // MapLibre cancels stale tile requests when the camera moves; those are expected.
   const unexpectedResourceFailures = resourceFailures.filter(failure => failure.error !== 'net::ERR_ABORTED')
   expect(unexpectedResourceFailures).toEqual([])
+  // Camera movement and zoom cancel stale tiles normally; those cancellations must
+  // not show the persistent basemap outage alert.
+  await expect(page.getByRole('alert')).toHaveCount(0)
   expect(pageErrors).toEqual([])
   console.log('REAL_MAP_RESOURCE_SUMMARY', JSON.stringify({
     route: {

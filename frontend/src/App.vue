@@ -95,6 +95,7 @@ let gridPopup = null
 
 const loading = ref(false)
 const mapReady = ref(false)
+const basemapError = ref('')
 let requestController = null
 const emptyPlaces = () => ({ type: 'FeatureCollection', features: [] })
 const isVerifiedValhallaRoute = (route) => {
@@ -895,6 +896,11 @@ const selectCategory = async (category) => {
 const searchPlaces = () => loadPlaces()
 const searchNearbyPlaces = () => loadPlaces(true)
 const searchCurrentArea = () => loadPlaces(false, true)
+const retryBasemap = () => {
+  if (!map?.getSource('osm')) return
+  basemapError.value = ''
+  map.refreshTiles('osm')
+}
 
 onMounted(() => {
   map = new Map({
@@ -929,7 +935,22 @@ onMounted(() => {
     new NavigationControl(),
     'top-right'
   )
-  map.once('load', () => {
+  map.on('error', (event) => {
+    const message = String(event?.error?.message || event?.error || '')
+    const normalized = message.toLowerCase()
+    if (normalized.includes('err_aborted') || normalized.includes('aborterror') || normalized.includes('aborted')) return
+    const isOsmTileError = event?.sourceId === 'osm' ||
+      /https?:\/\/tile\.openstreetmap\.org\//i.test(message)
+    if (isOsmTileError) {
+      basemapError.value = '底图暂时无法加载，景点数据仍可查询。可重试底图加载。'
+    }
+  })
+  map.on('sourcedata', (event) => {
+    if (event?.sourceId === 'osm' && event?.sourceDataType === 'content') {
+      basemapError.value = ''
+    }
+  })
+  map.once('style.load', () => {
     map.addSource('places', { type: 'geojson', data: emptyPlaces() })
     map.addSource('places-clusters', {
       type: 'geojson', data: emptyPlaces(),
@@ -1324,6 +1345,10 @@ onUnmounted(() => {
 
     <main class="map-stage" aria-label="南京地图">
       <div ref="mapContainer" class="map"></div>
+      <section v-if="basemapError" class="map-resource-error" role="alert">
+        <span>{{ basemapError }}</span>
+        <button type="button" @click="retryBasemap">重试底图</button>
+      </section>
       <div v-if="selectedRoutePlaces.length >= 2" class="map-route-status" role="status">
         <span class="map-status-dot" aria-hidden="true"></span>
         {{ routeKind === 'valhalla'
@@ -1523,6 +1548,12 @@ body { overflow: hidden; font-family: Inter, 'Segoe UI', 'Microsoft YaHei', sans
 .online-dot,.map-status-dot {display:inline-block;width:7px;height:7px;background:#1ca879;border-radius:50%;}
 .map-stage {grid-column:2;grid-row:2;position:relative;overflow:hidden;min-width:0;min-height:0;background:#e1e9ef;}
 .map {position:absolute;inset:0;width:100%;height:100%;}
+.map-resource-error {position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:7;
+  display:flex;align-items:center;gap:12px;max-width:calc(100% - 32px);padding:10px 12px;
+  border:1px solid #f2c879;border-radius:9px;background:#fff8e8;color:#754c08;
+  box-shadow:0 2px 10px #0002;font-size:12px;}
+.map-resource-error button {flex-shrink:0;border:1px solid #d6a94c;border-radius:6px;padding:5px 9px;
+  background:#fff;color:#684506;font:inherit;font-weight:700;cursor:pointer;}
 .map-route-status {position:absolute;left:18px;bottom:37px;z-index:5;display:flex;align-items:center;gap:8px;
   max-width:calc(100% - 36px);font-size:11px;background:#ffffffed;border:1px solid #d9e1ec;border-radius:9px;
   padding:8px 12px;box-shadow:0 2px 10px #0002;color:#31445e;pointer-events:none;}

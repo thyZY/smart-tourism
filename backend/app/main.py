@@ -1,5 +1,7 @@
 from fastapi import FastAPI
+from fastapi import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+import math
 import os
 import psycopg2
 from dotenv import load_dotenv
@@ -37,6 +39,34 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _validate_coordinate(value: float, name: str, minimum: float, maximum: float) -> None:
+    if not math.isfinite(value) or value < minimum or value > maximum:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{name} must be a finite value between {minimum} and {maximum}",
+        )
+
+
+def _validate_bbox(min_lng, min_lat, max_lng, max_lat) -> None:
+    bounds = (min_lng, min_lat, max_lng, max_lat)
+    if all(value is None for value in bounds):
+        return
+    if any(value is None for value in bounds):
+        raise HTTPException(status_code=422, detail="bbox requires min_lng, min_lat, max_lng, and max_lat")
+
+    _validate_coordinate(min_lng, "min_lng", -180, 180)
+    _validate_coordinate(max_lng, "max_lng", -180, 180)
+    _validate_coordinate(min_lat, "min_lat", -90, 90)
+    _validate_coordinate(max_lat, "max_lat", -90, 90)
+    if min_lng >= max_lng or min_lat >= max_lat:
+        raise HTTPException(status_code=422, detail="bbox minimum bounds must be less than maximum bounds")
+
+
+def _validate_radius(radius: float) -> None:
+    if not math.isfinite(radius) or radius < 0:
+        raise HTTPException(status_code=422, detail="radius must be a finite non-negative number")
 
 @app.get("/api/health")
 def health_check():
@@ -88,6 +118,7 @@ def get_places(
     max_lng: float | None = None,
     max_lat: float | None = None
 ):
+    _validate_bbox(min_lng, min_lat, max_lng, max_lat)
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -166,6 +197,9 @@ def get_nearby_places(
     radius: float = 5000,
     category: str | None = None
 ):
+    _validate_coordinate(lng, "lng", -180, 180)
+    _validate_coordinate(lat, "lat", -90, 90)
+    _validate_radius(radius)
     category = category.strip() if category else None
 
     conn = get_db_connection()
