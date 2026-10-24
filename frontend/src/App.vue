@@ -1609,7 +1609,8 @@ body { overflow: hidden; font-family: Inter, 'Segoe UI', 'Microsoft YaHei', sans
 @media(max-width:1020px){
   body{overflow:auto;}
   .map-wrapper,.map-wrapper.explorer-hidden,.map-wrapper.workspace-hidden{
-    display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(36vh,1fr) auto auto;
+    display:grid;grid-template-columns:minmax(0,1fr);
+    grid-template-rows:auto minmax(36vh,1fr) minmax(220px,260px) minmax(250px,480px);
     height:100dvh;min-height:640px;overflow-y:auto;
   }
   .app-toolbar{grid-column:1;grid-row:1;}
