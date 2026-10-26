@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import axios from 'axios'
 import { api } from '../services/api'
 
 const expanded = ref(true)

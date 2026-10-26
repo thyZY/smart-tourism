@@ -1,5 +1,6 @@
 <script setup>
 import { api } from './services/api'
+import axios from 'axios'
 import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { Map, NavigationControl, Popup, LngLatBounds, setWorkerUrl } from 'maplibre-gl'
 import StatisticsPanel from './components/StatisticsPanel.vue'

@@ -13,15 +13,21 @@ function reportApiAvailability(available) {
   }))
 }
 
+function isApiUnavailable(error) {
+  // A failed endpoint can still prove the API is reachable. Treat network
+  // failures and gateway/service-availability responses as global outages;
+  // ordinary 4xx/5xx responses belong to the calling feature's error state.
+  if (!error.response) return true
+  return [502, 503, 504].includes(error.response.status)
+}
+
 api.interceptors.response.use(
   response => {
     reportApiAvailability(true)
     return response
   },
   error => {
-    // A validation/auth/client response proves the API was reachable. Only network
-    // failures and server/proxy errors should surface the API-unavailable notice.
-    reportApiAvailability(Boolean(error.response && error.response.status < 500))
+    reportApiAvailability(!isApiUnavailable(error))
     return Promise.reject(error)
   }
 )
