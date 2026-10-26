@@ -17,6 +17,10 @@ const createStorage = (initialValues = {}) => ({
   setItem(key, value) { this.values.set(key, String(value)) }
 })
 const localStorage = createStorage()
+const apiMock = {
+  isCancel: () => false,
+  get: (url, options) => new Promise((resolve, reject) => requests.push({ url, options, resolve, reject }))
+}
 const bounds = {
   getWest: () => 118.785,
   getSouth: () => 32.025,
@@ -42,17 +46,17 @@ const map = {
 const context = vm.createContext({
   ref: value => ({ value }), onMounted: fn => { mounted = fn },
   onUnmounted: fn => { unmounted = fn },
+  watch: () => {},
   nextTick: () => Promise.resolve(),
   Map: function () { return map }, NavigationControl: function () {},
   setWorkerUrl() {}, workerUrl: '', AbortController, localStorage, themes, culturalLines,
+  window: { matchMedia: () => ({ matches: false }) },
   document: { querySelector: () => null },
-  axios: {
-    isCancel: () => false,
-    get: (url, options) => new Promise((resolve, reject) => requests.push({ url, options, resolve, reject }))
-  }
+  axios: apiMock,
+  api: apiMock
 })
-vm.runInContext(script + '\nthis.api = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, setGridAnalysisVisible, tourismGrid, gridAnalysisVisible, selectTheme, selectedTheme, selectCulturalLine, clearCulturalLine, selectedCulturalLine, focusResult, closePlaceDetail, toggleRoutePlace, clearRoute, toggleFavorite, showFavoritePlaces, isFavorite, favoritePlaceIds, showFavoritesOnly, selectedRoutePlaces, routeDistanceKm, selectedPlace, selectedPlaceId, placeDetails, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
-const api = context.api
+vm.runInContext(script + '\nthis.testApi = { searchPlaces, searchNearbyPlaces, searchCurrentArea, setMapDisplayMode, setGridAnalysisVisible, tourismGrid, gridAnalysisVisible, selectTheme, selectedTheme, selectCulturalLine, clearCulturalLine, selectedCulturalLine, focusResult, closePlaceDetail, toggleRoutePlace, clearRoute, toggleFavorite, showFavoritePlaces, isFavorite, favoritePlaceIds, showFavoritesOnly, selectedRoutePlaces, routeDistanceKm, selectedPlace, selectedPlaceId, placeDetails, loading, searchMessage, searchQuery, selectedCategory, mapDisplayMode };', context)
+const api = context.testApi
 const empty = { type: 'FeatureCollection', features: [] }
 const tick = () => new Promise(resolve => setImmediate(resolve))
 mounted()
@@ -413,10 +417,10 @@ const restoreStorage = createStorage({
   'smart-tourism-favorites': JSON.stringify([1, 4, 4, 'invalid'])
 })
 const restoreContext = vm.createContext({
-  ref: value => ({ value }), onMounted() {}, onUnmounted() {},
+  ref: value => ({ value }), onMounted() {}, onUnmounted() {}, watch: () => {},
   Map: function () {}, NavigationControl: function () {},
   setWorkerUrl() {}, workerUrl: '', AbortController, localStorage: restoreStorage,
-  axios: { isCancel: () => false, get() {} }
+  axios: { isCancel: () => false, get() {} }, api: { get() {} }
 })
 vm.runInContext(script + '\nthis.restoredFavorites = favoritePlaceIds.value', restoreContext)
 assert.deepEqual(
@@ -425,11 +429,11 @@ assert.deepEqual(
   'initialization restores valid unique IDs from localStorage'
 )
 const invalidStorageContext = vm.createContext({
-  ref: value => ({ value }), onMounted() {}, onUnmounted() {},
+  ref: value => ({ value }), onMounted() {}, onUnmounted() {}, watch: () => {},
   Map: function () {}, NavigationControl: function () {},
   setWorkerUrl() {}, workerUrl: '', AbortController,
   localStorage: createStorage({ 'smart-tourism-favorites': '{not-json' }),
-  axios: { isCancel: () => false, get() {} }
+  axios: { isCancel: () => false, get() {} }, api: { get() {} }
 })
 vm.runInContext(script + '\nthis.invalidFavorites = favoritePlaceIds.value', invalidStorageContext)
 assert.deepEqual(

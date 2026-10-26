@@ -5,6 +5,7 @@ on:
     branches:
       - feat/itinerary-management-20261014
       - 'feat/v1.*'
+      - 'feat/pwa-*'
   pull_request:
 
 jobs:

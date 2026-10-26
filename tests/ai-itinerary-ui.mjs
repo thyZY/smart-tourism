@@ -29,6 +29,14 @@ const buildPlan = (ids=[1,2,3]) => ({
   route: { status: 'unavailable' }
 })
 let failure = false
+const apiMock = {
+  get: async () => ({ data: { type: 'FeatureCollection', features: [buildFeature(1,'博物馆',118.7,32),buildFeature(2,'公园',118.8,32)] } }),
+  post: async (url,payload) => {
+    calls.push({ url,payload })
+    if (failure) throw { response: { data: { detail:'历史景点失效' } } }
+    return { data: buildPlan(url.endsWith('/restore') ? payload.place_ids : url.endsWith('/edit-preview') ? [1,2] : [1,2,3]) }
+  }
+}
 const context = vm.createContext({
   reactive: obj => obj,
   ref: value => ({ value }),
@@ -38,11 +46,8 @@ const context = vm.createContext({
     getItem(key) { return store.get(key) ?? null },
     setItem(key,value) { store.set(key,String(value)) }
   },
-  axios: { get: async () => ({ data: { type: 'FeatureCollection', features: [buildFeature(1,'博物馆',118.7,32),buildFeature(2,'公园',118.8,32)] } }), post: async (url,payload) => {
-    calls.push({ url,payload })
-    if (failure) throw { response: { data: { detail:'历史景点失效' } } }
-    return { data: buildPlan(url.endsWith('/restore') ? payload.place_ids : url.endsWith('/edit-preview') ? [1,2] : [1,2,3]) }
-  }},
+  axios: apiMock,
+  api: apiMock,
   crypto: { randomUUID: () => 'test-uuid' },
   Blob, Math, Date, Number, JSON,
   setTimeout(fn) { fn() },

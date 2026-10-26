@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test'
 
 const runId = new Date().toISOString().replace(/[:.]/g, '-')
 const reportRoot = process.env.PLAYWRIGHT_PWA_REPORT_ROOT || `test-results/runs/${runId}-pwa`
+const previewPort = Number(process.env.PLAYWRIGHT_PWA_PORT || 4173)
 
 export default defineConfig({
   testDir: './browser-tests',
@@ -14,7 +15,7 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never', outputFolder: `${reportRoot}/html-report` }], ['json', { outputFile: `${reportRoot}/results.json` }], ['line']],
   use: {
     ...devices['Desktop Chrome'],
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL: `http://127.0.0.1:${previewPort}`,
     viewport: { width: 390, height: 844 },
     serviceWorkers: 'allow',
     trace: 'retain-on-failure',
