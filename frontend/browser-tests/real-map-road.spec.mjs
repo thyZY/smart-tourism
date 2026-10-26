@@ -26,6 +26,12 @@ test('real POIs, OSM basemap, and optimized Valhalla road render in MapLibre', a
 
   await page.goto('/', { waitUntil: 'domcontentloaded' })
   await expect(page.locator('.map canvas')).toBeVisible()
+  const mobileWorkspaces = page.getByRole('tablist', { name: '主要工作区' })
+  if (await mobileWorkspaces.isVisible()) {
+    await mobileWorkspaces.getByRole('tab', { name: '探索' }).click()
+    const expand = page.getByRole('button', { name: '展开工作面板' })
+    if (await expand.isVisible()) await expand.click()
+  }
   await expect(page.locator('.result-item[data-place-id="1"]')).toBeVisible({ timeout: 20000 })
   await expect(page.locator('.result-item[data-place-id="2"]')).toBeVisible()
   await expect(page.locator('.result-item[data-place-id="3"]')).toBeVisible()
@@ -44,6 +50,9 @@ test('real POIs, OSM basemap, and optimized Valhalla road render in MapLibre', a
     await result.click()
     await expect(page.locator('aside[aria-label="景点详情"]')).toContainText(name)
     await page.getByRole('button', { name: '加入路线' }).click()
+    if (await mobileWorkspaces.isVisible()) {
+      await page.getByRole('button', { name: '关闭详情' }).click()
+    }
     await expect(page.locator(`.result-item[data-place-id="${id}"] .route-order-pill`)).toBeVisible()
   }
   await expect(page.locator('aside[aria-label="我的路线"]')).toContainText('4')
@@ -95,6 +104,16 @@ test('real POIs, OSM basemap, and optimized Valhalla road render in MapLibre', a
   await expect(page.locator('.route-distance')).toContainText(`${road.distance_km.toFixed(1)} km`)
   await expect(page.locator('.route-time')).toContainText(`${road.duration_minutes.toFixed(1)} 分钟`)
   await expect(page.getByText('已按路网时间优化顺序')).toBeVisible()
+  const routeLayerSource = await page.evaluate(() => {
+    const root = document.querySelector('#app')?.__vue_app__?._instance?.setupState
+    const instance = root?.map
+    return instance?.getLayer('route-line')?.source ?? null
+  })
+  expect(routeLayerSource).toBe('route-line')
+  await expect.poll(() => page.evaluate(() => {
+    const instance = document.querySelector('#app')?.__vue_app__?._instance?.setupState?.map
+    return instance?.queryRenderedFeatures({ layers: ['route-line'] }).length ?? 0
+  }), { timeout: 10000 }).toBeGreaterThan(0)
   const displayedOrder = await page.locator('.route-stop-name').allTextContents()
   expect(displayedOrder).toEqual(['南京博物院', '夫子庙', '南京总统府', '中山陵'])
 
@@ -140,8 +159,14 @@ test('real POIs, OSM basemap, and optimized Valhalla road render in MapLibre', a
   await page.getByRole('button', { name: '计算实际道路路线' }).click()
   const secondRoad = await secondRoadPromise
   expect(secondRoad.status()).toBe(200)
+  if (await mobileWorkspaces.isVisible()) {
+    await page.getByRole('button', { name: '收起工作面板' }).click()
+  }
   await page.screenshot({ path: testInfo.outputPath('real-valhalla-route.png'), fullPage: false })
 
+  if (await mobileWorkspaces.isVisible()) {
+    await mobileWorkspaces.getByRole('tab', { name: '探索' }).click()
+  }
   await page.locator('.result-item[data-place-id="2"]').click()
   await page.getByRole('button', { name: '移出路线' }).click()
   await page.getByRole('tab', { name: '我的路线' }).click()
@@ -182,5 +207,106 @@ test('real POIs, OSM basemap, and optimized Valhalla road render in MapLibre', a
     failures: resourceFailures,
     unexpectedFailures: unexpectedResourceFailures,
     consoleErrors
+  }))
+})
+
+test('real database POIs and Valhalla road update the MapLibre route source without tile gating', async ({ page }, testInfo) => {
+  test.setTimeout(90000)
+  const pageErrors = []
+  page.on('pageerror', error => pageErrors.push(error.message))
+
+  await page.goto('/', { waitUntil: 'domcontentloaded' })
+  await expect(page.locator('.map canvas')).toBeVisible()
+  await page.waitForFunction(() =>
+    document.querySelector('#app')?.__vue_app__?._instance?.setupState?.mapReady === true,
+    undefined,
+    { timeout: 20000 }
+  )
+
+  const mobileWorkspaces = page.getByRole('tablist', { name: '主要工作区' })
+  if (await mobileWorkspaces.isVisible()) {
+    await mobileWorkspaces.getByRole('tab', { name: '探索' }).click()
+    const expand = page.getByRole('button', { name: '展开工作面板' })
+    if (await expand.isVisible()) await expand.click()
+  }
+
+  const expectedPlaces = [
+    [1, '南京博物院'], [2, '夫子庙'], [3, '中山陵'], [4, '南京总统府']
+  ]
+  for (const [id, name] of expectedPlaces) {
+    const result = page.locator(`.result-item[data-place-id="${id}"]`)
+    await expect(result).toContainText(name)
+    await result.click()
+    await expect(page.locator('aside[aria-label="景点详情"]')).toContainText(name)
+    await page.getByRole('button', { name: '加入路线' }).click()
+    if (await mobileWorkspaces.isVisible()) {
+      await page.getByRole('button', { name: '关闭详情' }).click()
+    }
+  }
+
+  if (await mobileWorkspaces.isVisible()) {
+    await mobileWorkspaces.getByRole('tab', { name: '我的路线' }).click()
+  } else {
+    await page.getByRole('tablist', { name: '选择工作台功能' })
+      .getByRole('tab', { name: '我的路线', exact: true }).click()
+  }
+  await expect(page.locator('aside[aria-label="我的路线"]')).toContainText('4')
+  await page.getByLabel('道路交通方式').selectOption('auto')
+  await page.getByLabel('使用时间矩阵优化顺序（固定首站）').check()
+
+  const roadResponsePromise = page.waitForResponse(response =>
+    response.url().endsWith('/api/ai/itinerary/road') &&
+    response.request().method() === 'POST'
+  )
+  await page.getByRole('button', { name: '计算实际道路路线' }).click()
+  const roadResponse = await roadResponsePromise
+  expect(roadResponse.status()).toBe(200)
+  expect(roadResponse.request().postDataJSON()).toMatchObject({
+    place_ids: [1, 2, 3, 4], travel_mode: 'auto', optimize: true
+  })
+  const road = await roadResponse.json()
+  expect(road.status).toBe('verified_by_routing_service')
+  expect(road.provider).toBe('Valhalla')
+  expect(road.optimized).toBe(true)
+  expect(road.geojson.type).toBe('FeatureCollection')
+  expect(road.geojson.features[0].geometry.type).toBe('LineString')
+  expect(road.geojson.features[0].geometry.coordinates.length).toBeGreaterThan(20)
+  expect(road.geojson.features[0].geometry.coordinates.every(coordinate =>
+    Array.isArray(coordinate) && coordinate.length >= 2 && coordinate.every(Number.isFinite)
+  )).toBe(true)
+
+  await expect(page.locator('.map-route-status')).toContainText('Valhalla')
+  await expect(page.locator('.route-distance')).toContainText(`${road.distance_km.toFixed(1)} km`)
+  await expect(page.locator('.route-time')).toContainText(`${road.duration_minutes.toFixed(1)} 分钟`)
+  const routeLayerSource = await page.evaluate(() => {
+    const map = document.querySelector('#app')?.__vue_app__?._instance?.setupState?.map
+    const source = map?.getSource('route-line')
+    return {
+      layerSource: map?.getLayer('route-line')?.source ?? null,
+      data: source?._data?.geojson ?? source?._options?.data ?? null
+    }
+  })
+  expect(routeLayerSource.layerSource).toBe('route-line')
+  expect(routeLayerSource.data?.features?.[0]?.geometry).toEqual(road.geojson.features[0].geometry)
+
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: '导出道路 GeoJSON' }).click()
+  const download = await downloadPromise
+  const outputPath = testInfo.outputPath('real-valhalla-route.geojson')
+  await download.saveAs(outputPath)
+  const exported = JSON.parse(await readFile(outputPath, 'utf8'))
+  expect(exported).toEqual(road.geojson)
+  expect(pageErrors).toEqual([])
+
+  await page.screenshot({ path: testInfo.outputPath('real-valhalla-route-source.png'), fullPage: false })
+  console.log('REAL_VALHALLA_SOURCE', JSON.stringify({
+    status: road.status,
+    provider: road.provider,
+    orderedPlaceIds: road.ordered_place_ids,
+    distanceKm: road.distance_km,
+    durationMinutes: road.duration_minutes,
+    coordinateCount: road.geojson.features[0].geometry.coordinates.length,
+    layerSource: routeLayerSource.layerSource,
+    externalBasemapRequired: false
   }))
 })

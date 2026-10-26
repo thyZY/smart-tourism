@@ -1,4 +1,22 @@
 :root {
+  --tourism-blue: #215fc5;
+  --tourism-blue-strong: #174f9f;
+  --tourism-blue-soft: #eaf2ff;
+  --tourism-ink: #1b2c43;
+  --tourism-muted: #61738b;
+  --tourism-border: #dbe4ef;
+  --tourism-surface: #ffffff;
+  --tourism-surface-soft: #f5f8fc;
+  --tourism-danger: #b42318;
+  --tourism-success: #16724b;
+  --tourism-radius-control: 10px;
+  --tourism-radius-card: 14px;
+  --tourism-touch-target: 44px;
+  --tourism-space-1: 4px;
+  --tourism-space-2: 8px;
+  --tourism-space-3: 12px;
+  --tourism-space-4: 16px;
+  --tourism-space-5: 20px;
   --text: #6b6375;
   --text-h: #08060d;
   --bg: #fff;

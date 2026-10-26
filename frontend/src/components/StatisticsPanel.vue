@@ -1,6 +1,6 @@
 <script setup>
-import axios from 'axios'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { api } from '../services/api'
 
 const expanded = ref(true)
 const loading = ref(true)
@@ -24,7 +24,7 @@ const loadStatistics = async () => {
   errorMessage.value = ''
 
   try {
-    const response = await axios.get('http://127.0.0.1:8010/api/statistics', {
+    const response = await api.get('/api/statistics', {
       signal: controller.signal,
       timeout: 10000
     })

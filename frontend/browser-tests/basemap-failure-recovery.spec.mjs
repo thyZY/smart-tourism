@@ -3,6 +3,7 @@ import { test, expect } from '@playwright/test'
 test('simulated basemap failure keeps live POIs usable and retries real tiles', async ({ page }, testInfo) => {
   test.setTimeout(90000)
   let forcedFailures = 0
+  let simulateOutage = true
   const tileResponses = []
   const tileFailures = []
   page.on('response', response => {
@@ -16,7 +17,7 @@ test('simulated basemap failure keeps live POIs usable and retries real tiles', 
     }
   })
   await page.route('https://tile.openstreetmap.org/**', async route => {
-    if (forcedFailures < 1) {
+    if (simulateOutage) {
       forcedFailures += 1
       await route.abort('failed')
       return
@@ -33,13 +34,14 @@ test('simulated basemap failure keeps live POIs usable and retries real tiles', 
   await page.screenshot({ path: testInfo.outputPath('simulated-basemap-failure-pois-usable.png') })
 
   const successfulBeforeRetry = tileResponses.filter(response => response.status === 200).length
+  simulateOutage = false
   await page.getByRole('button', { name: '重试底图' }).click()
   await expect.poll(() => tileResponses.filter(response => response.status === 200).length,
     { timeout: 45000 }).toBeGreaterThan(successfulBeforeRetry)
   await expect(page.getByRole('alert')).toHaveCount(0, { timeout: 15000 })
   await page.screenshot({ path: testInfo.outputPath('basemap-recovered-live-tiles.png') })
 
-  expect(forcedFailures).toBe(1)
+  expect(forcedFailures).toBeGreaterThan(0)
   expect(tileFailures.some(failure => failure.error !== 'net::ERR_ABORTED')).toBe(true)
   console.log('BASEMAP_FAILURE_RECOVERY', JSON.stringify({
     forcedFailures,

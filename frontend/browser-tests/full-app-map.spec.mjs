@@ -20,6 +20,27 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/places/nearby**', route =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(collection()) })
   )
+  await page.route('**/api/ai/itinerary/generate', route => {
+    const features = pois
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        title: '南京历史文化一日游',
+        summary: '模拟 API 的工作区流程验收',
+        mode: 'pedestrian',
+        planning_method: 'local_rule_fallback',
+        stops: features.map(feature => ({
+          id: feature.properties.id,
+          name: feature.properties.name,
+          category: feature.properties.category,
+          reason: '测试数据库景点'
+        })),
+        selected_places: { type: 'FeatureCollection', features },
+        route: { status: 'unavailable' }
+      })
+    })
+  })
   await page.route('**/api/ai/itinerary/road', route =>
     route.fulfill({
       status: 200, contentType: 'application/json',
@@ -45,24 +66,42 @@ test.beforeEach(async ({ page }) => {
   await page.route('https://demotiles.maplibre.org/**', route => route.abort())
   await page.goto('/full-app-e2e.html')
   await expect(page.locator('.map canvas')).toBeVisible({ timeout: 15000 })
+  await page.waitForFunction(() =>
+    document.querySelector('#app')?.__vue_app__?._instance?.setupState?.mapReady === true,
+    undefined,
+    { timeout: 15000 }
+  )
+  const mobileWorkspaces = page.getByRole('tablist', { name: '主要工作区' })
+  if (await mobileWorkspaces.isVisible()) {
+    await mobileWorkspaces.getByRole('tab', { name: 'AI 行程' }).click()
+  }
 })
 
-test('complete map + AI itinerary + route workspace flow', async ({ page }) => {
+test('mocked map + AI itinerary + explicit route workspace flow', async ({ page }) => {
   await expect(page.getByRole('button', { name: '生成并加载到地图' })).toBeEnabled({ timeout: 15000 })
   await page.getByRole('button', { name: '生成并加载到地图' }).click()
   await expect(page.getByText('当前行程 · 数据库景点')).toBeVisible({ timeout: 15000 })
-  await expect(page.locator('.map-route-status')).toContainText('Valhalla')
+  await expect(page.locator('.map-route-status')).toContainText('直线串联预览 · 非实际导航路径')
   await expect(page.getByRole('tab', { name: '我的路线', exact: true })).toBeVisible()
 
   await page.getByRole('tab', { name: '我的路线', exact: true }).click()
   await expect(page.locator('aside[aria-label="我的路线"]')).toBeVisible()
-  await expect(page.getByText('路网已计算')).toBeVisible()
-  await expect(page.getByText('ROAD DISTANCE')).toBeVisible()
+  await expect(page.locator('.route-type-pill')).toHaveText('直线预览')
+  await expect(page.getByText('STRAIGHT LINE')).toBeVisible()
 
   const road = page.waitForResponse(r =>
     r.url().endsWith('/api/ai/itinerary/road') && r.request().method() === 'POST')
   await page.getByRole('button', { name: '计算实际道路路线' }).click()
-  expect((await road).status()).toBe(200)
+  const roadResponse = await road
+  expect(roadResponse.status()).toBe(200)
+  expect(await roadResponse.json()).toMatchObject({
+    status: 'verified_by_routing_service',
+    provider: 'Valhalla',
+    optimized: false
+  })
+  await expect(page.locator('.route-type-pill')).toHaveText('路网已计算')
+  await expect(page.getByText('ROAD DISTANCE')).toBeVisible()
+  await expect(page.locator('.map-route-status')).toContainText('Valhalla')
   await expect(page.getByText('预计交通：')).toBeVisible()
   await expect(page.getByText(/26.5/)).toBeVisible()
 
@@ -76,6 +115,10 @@ test('manual POI route edit invalidates stale AI state while map remains usable'
   await expect(page.getByText('当前行程 · 数据库景点')).toBeVisible({ timeout: 15000 })
   await expect(page.getByRole('navigation', { name: '行程工作台快捷导航' })).toBeVisible()
 
+  const mobileWorkspaces = page.getByRole('tablist', { name: '主要工作区' })
+  if (await mobileWorkspaces.isVisible()) {
+    await mobileWorkspaces.getByRole('tab', { name: '探索' }).click()
+  }
   await page.locator('.result-item[data-place-id]').first().click()
   await expect(page.locator('aside[aria-label="景点详情"]')).toBeVisible()
   await expect(page.getByRole('button', { name: '移出路线' })).toBeVisible()

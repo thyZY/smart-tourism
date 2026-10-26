@@ -15,9 +15,16 @@ for (const viewport of viewports) {
     await page.goto('/')
     await expect(page.locator('.map canvas')).toBeVisible({ timeout: 20000 })
 
+    const mobileWorkspaces = page.getByRole('tablist', { name: '主要工作区' })
+    if (await mobileWorkspaces.isVisible()) {
+      await mobileWorkspaces.getByRole('tab', { name: '探索' }).click()
+      const expand = page.getByRole('button', { name: '展开工作面板' })
+      if (await expand.isVisible()) await expand.click()
+    }
+
     const search = async query => {
       const placesRequest = page.waitForResponse(response =>
-        response.url().startsWith('http://127.0.0.1:8010/api/places?') &&
+        new URL(response.url()).pathname === '/api/places' &&
         new URL(response.url()).searchParams.get('q') === query &&
         response.request().method() === 'GET' && response.status() === 200
       )

@@ -37,12 +37,19 @@ const verifiedRoad = {
 }
 
 async function addFourPlaces(page) {
+  const mobileWorkspaces = page.getByRole('tablist', { name: '主要工作区' })
+  if (await mobileWorkspaces.isVisible()) {
+    await mobileWorkspaces.getByRole('tab', { name: '探索' }).click()
+  }
   for (const place of places) {
     const row = page.locator(`.result-item[data-place-id="${place.properties.id}"]`)
     await expect(row).toContainText(place.properties.name)
     await row.click()
     await expect(page.locator('aside[aria-label="景点详情"]')).toContainText(place.properties.name)
     await page.getByRole('button', { name: '加入路线' }).click()
+    if (await mobileWorkspaces.isVisible()) {
+      await page.getByRole('button', { name: '关闭详情' }).click()
+    }
   }
   await page.getByRole('tab', { name: '我的路线' }).click()
   await expect(page.locator('.route-stop-name')).toHaveCount(4)
@@ -135,14 +142,27 @@ test('mocked route success exports matching optimized GeoJSON and itinerary; edi
   expect(itinerary.route.geojson).toEqual(downloadedGeo)
 
   // A successful road becomes stale immediately when a stop is removed.
+  const mobileWorkspaces = page.getByRole('tablist', { name: '主要工作区' })
+  if (await mobileWorkspaces.isVisible()) {
+    await mobileWorkspaces.getByRole('tab', { name: '探索' }).click()
+  }
   await page.locator('.result-item[data-place-id="2"]').click()
   await page.getByRole('button', { name: '移出路线' }).click()
+  if (await mobileWorkspaces.isVisible()) {
+    await page.getByRole('button', { name: '关闭详情' }).click()
+  }
   await page.getByRole('tab', { name: '我的路线' }).click()
   await expect(page.getByRole('button', { name: '导出道路 GeoJSON' })).toBeDisabled()
 
   // Restore the stop and calculate again to prove a later failed request cannot revive old data.
+  if (await mobileWorkspaces.isVisible()) {
+    await mobileWorkspaces.getByRole('tab', { name: '探索' }).click()
+  }
   await page.locator('.result-item[data-place-id="2"]').click()
   await page.getByRole('button', { name: '加入路线' }).click()
+  if (await mobileWorkspaces.isVisible()) {
+    await page.getByRole('button', { name: '关闭详情' }).click()
+  }
   await page.getByRole('tab', { name: '我的路线' }).click()
   const restoredResponsePromise = page.waitForResponse(response =>
     response.url().endsWith('/api/ai/itinerary/road') && response.request().method() === 'POST')
@@ -186,6 +206,10 @@ test('AI itinerary export remains independent', async ({ page }, testInfo) => {
     status: 200, contentType: 'application/json', body: JSON.stringify(aiPlan)
   }))
   await page.goto('/e2e-harness.html', { waitUntil: 'domcontentloaded' })
+  const mobileWorkspaces = page.getByRole('tablist', { name: '主要工作区' })
+  if (await mobileWorkspaces.isVisible()) {
+    await mobileWorkspaces.getByRole('tab', { name: 'AI 行程' }).click()
+  }
   await page.getByRole('button', { name: '生成并加载到地图' }).click()
   await expect(page.getByText('当前行程 · 数据库景点')).toBeVisible()
 

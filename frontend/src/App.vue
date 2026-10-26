@@ -1,6 +1,6 @@
 <script setup>
-import axios from 'axios'
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { api } from './services/api'
+import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { Map, NavigationControl, Popup, LngLatBounds, setWorkerUrl } from 'maplibre-gl'
 import StatisticsPanel from './components/StatisticsPanel.vue'
 import RoutePanel from './components/RoutePanel.vue'
@@ -9,6 +9,8 @@ import PlaceDetailPanel from './components/PlaceDetailPanel.vue'
 import ThemePanel from './components/ThemePanel.vue'
 import CulturalLinePanel from './components/CulturalLinePanel.vue'
 import SpatialAnalysisPanel from './components/SpatialAnalysisPanel.vue'
+import MobileWorkspaceSheet from './components/MobileWorkspaceSheet.vue'
+import PwaStatus from './components/PwaStatus.vue'
 import themes from './data/themes.js'
 import culturalLines from './data/culturalLines.js'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -38,6 +40,8 @@ const selectedTheme = ref(null)
 const selectedCulturalLine = ref(null)
 const showExplorer = ref(true)
 const showWorkspace = ref(true)
+const mobileWorkspace = ref('explore')
+const mobileSheetExpanded = ref(false)
 const activeWorkspaceTab = ref('ai')
 const workspaceTabs = [
   { id: 'ai', title: 'AI 行程' },
@@ -55,6 +59,25 @@ const toggleWorkspace = () => {
   showWorkspace.value = !showWorkspace.value
   void nextTick(() => map?.resize?.())
 }
+
+const setMobileWorkspace = (workspace) => {
+  mobileWorkspace.value = workspace
+  mobileSheetExpanded.value = true
+  if (workspace === 'explore') {
+    activeWorkspaceTab.value = selectedPlace.value ? 'detail' : 'themes'
+  } else if (workspace === 'route' || workspace === 'ai') {
+    activeWorkspaceTab.value = workspace
+  } else if (workspace === 'more' && ['ai', 'route', 'detail'].includes(activeWorkspaceTab.value)) {
+    activeWorkspaceTab.value = 'themes'
+  }
+  void nextTick(() => map?.resize?.())
+}
+
+const isNarrowWorkspace = () => window.matchMedia('(max-width: 1020px)').matches
+
+watch([mobileWorkspace, mobileSheetExpanded], () => {
+  void nextTick(() => map?.resize?.())
+})
 
 const favoriteStorageKey = 'smart-tourism-favorites'
 // The POI table currently supplies name/category/address/geometry only.
@@ -374,7 +397,7 @@ const showFavoritePlaces = async () => {
   requestController = controller
 
   try {
-    const response = await axios.get('http://127.0.0.1:8010/api/places', {
+    const response = await api.get('/api/places', {
       signal: controller.signal,
       timeout: 10000
     })
@@ -469,7 +492,7 @@ const calculateSelectedRoad = async ({ mode, optimize }) => {
   roadLoading.value = true
   roadError.value = ''
   try {
-    const response = await axios.post('http://127.0.0.1:8010/api/ai/itinerary/road', {
+    const response = await api.post('/api/ai/itinerary/road', {
       place_ids: ids, travel_mode: mode, optimize
     }, { timeout: 45000 })
     if (seq !== roadRequestSequence ||
@@ -665,16 +688,21 @@ const clearPopup = () => {
 }
 
 const closePlaceDetail = () => {
-  if (activeWorkspaceTab.value === 'detail') activeWorkspaceTab.value = 'route'
+  if (activeWorkspaceTab.value === 'detail') {
+    activeWorkspaceTab.value = isNarrowWorkspace() ? 'themes' : 'route'
+  }
   selectedPlace.value = null
   selectedPlaceId.value = null
   highlightSelectedPlace(null)
+  if (isNarrowWorkspace()) mobileWorkspace.value = 'explore'
 }
 
 const openPlaceDetail = (feature) => {
   if (!feature?.properties?.id) return
   activeWorkspaceTab.value = 'detail'
   showWorkspace.value = true
+  mobileWorkspace.value = 'explore'
+  mobileSheetExpanded.value = true
   void nextTick(() => map?.resize?.())
 
   selectedPlace.value = feature
@@ -803,8 +831,8 @@ const loadPlaces = async (nearby = false, currentArea = false) => {
   requestController = controller
 
   try {
-    const response = await axios.get(
-      `http://127.0.0.1:8010/api/places${nearby ? '/nearby' : ''}`,
+    const response = await api.get(
+      `/api/places${nearby ? '/nearby' : ''}`,
       {
         params: nearby
           ? {
@@ -1188,7 +1216,12 @@ onUnmounted(() => {
     class="map-wrapper"
     :class="{
       'explorer-hidden': !showExplorer,
-      'workspace-hidden': !showWorkspace
+      'workspace-hidden': !showWorkspace,
+      'mobile-sheet-expanded': mobileSheetExpanded,
+      'mobile-workspace-explore': mobileWorkspace === 'explore',
+      'mobile-workspace-route': mobileWorkspace === 'route',
+      'mobile-workspace-ai': mobileWorkspace === 'ai',
+      'mobile-workspace-more': mobileWorkspace === 'more'
     }"
   >
     <header class="app-toolbar" aria-label="智慧文旅地图工具栏">
@@ -1222,42 +1255,44 @@ onUnmounted(() => {
             :disabled="loading || !mapReady" @click="searchPlaces">搜索</button>
         </div>
 
-        <button
-          type="button"
-          class="toolbar-button nearby-button"
-          :disabled="loading || !mapReady"
-          @click="searchNearbyPlaces"
-        >{{ loading ? '查询中…' : '附近 5 km' }}</button>
-
-        <button
-          type="button"
-          class="toolbar-button favorites-button"
-          :class="{ active: showFavoritesOnly }"
-          :disabled="loading || !mapReady"
-          @click="showFavoritePlaces"
-        >我的收藏 ({{ favoritePlaceIds.length }})</button>
-
-        <button
-          type="button"
-          class="toolbar-button current-area-button"
-          :disabled="loading || !mapReady"
-          @click="searchCurrentArea"
-        >搜索当前区域</button>
-
-        <div class="toolbar-spacer"></div>
-        <div class="map-display-control" role="group" aria-label="地图显示模式">
+        <div class="toolbar-utilities" aria-label="地图工具">
           <button
             type="button"
-            :class="{ active: mapDisplayMode === 'points' }"
-            :disabled="!mapReady"
-            @click="setMapDisplayMode('points')"
-          >点位</button>
+            class="toolbar-button nearby-button"
+            :disabled="loading || !mapReady"
+            @click="searchNearbyPlaces"
+          >{{ loading ? '查询中…' : '附近 5 km' }}</button>
+
           <button
             type="button"
-            :class="{ active: mapDisplayMode === 'heatmap' }"
-            :disabled="!mapReady"
-            @click="setMapDisplayMode('heatmap')"
-          >热力</button>
+            class="toolbar-button favorites-button"
+            :class="{ active: showFavoritesOnly }"
+            :disabled="loading || !mapReady"
+            @click="showFavoritePlaces"
+          >我的收藏 ({{ favoritePlaceIds.length }})</button>
+
+          <button
+            type="button"
+            class="toolbar-button current-area-button"
+            :disabled="loading || !mapReady"
+            @click="searchCurrentArea"
+          >搜索当前区域</button>
+
+          <div class="toolbar-spacer"></div>
+          <div class="map-display-control" role="group" aria-label="地图显示模式">
+            <button
+              type="button"
+              :class="{ active: mapDisplayMode === 'points' }"
+              :disabled="!mapReady"
+              @click="setMapDisplayMode('points')"
+            >点位</button>
+            <button
+              type="button"
+              :class="{ active: mapDisplayMode === 'heatmap' }"
+              :disabled="!mapReady"
+              @click="setMapDisplayMode('heatmap')"
+            >热力</button>
+          </div>
         </div>
         <button
           type="button"
@@ -1286,6 +1321,30 @@ onUnmounted(() => {
       </div>
     </header>
 
+    <PwaStatus />
+
+    <main class="map-stage" aria-label="南京地图">
+      <div ref="mapContainer" class="map"></div>
+      <section v-if="basemapError" class="map-resource-error" role="alert">
+        <span>{{ basemapError }}</span>
+        <button type="button" @click="retryBasemap">重试底图</button>
+      </section>
+      <div v-if="selectedRoutePlaces.length >= 2" class="map-route-status" role="status">
+        <span class="map-status-dot" aria-hidden="true"></span>
+        {{ routeKind === 'valhalla'
+          ? '已验证的 Valhalla 道路线路'
+          : '直线串联预览 · 非实际导航路径' }}
+      </div>
+      <div class="map-attribution-note">地图 © OpenStreetMap · 空间结果以数据源为准</div>
+    </main>
+
+    <MobileWorkspaceSheet
+      v-model:active="mobileWorkspace"
+      v-model:expanded="mobileSheetExpanded"
+      :detail-open="activeWorkspaceTab === 'detail' && Boolean(selectedPlace)"
+      :route-count="selectedRoutePlaces.length"
+      @update:active="setMobileWorkspace"
+    >
     <aside
       v-show="showExplorer"
       id="explorer-panel"
@@ -1320,18 +1379,26 @@ onUnmounted(() => {
           @click="focusResult(feature)"
         >
           <button
+            class="result-open"
+            type="button"
+            :aria-label="'查看景点详情：' + feature.properties.name"
+            :aria-pressed="selectedPlaceId === feature.properties.id"
+            @click.stop="focusResult(feature)"
+          >
+            <strong>{{ feature.properties.name }}</strong>
+            <span v-if="selectedRoutePlaces.some(p => p.properties.id === feature.properties.id)"
+              class="route-order-pill"
+              :title="'行程第 ' + (selectedRoutePlaces.findIndex(p => p.properties.id === feature.properties.id) + 1) + ' 站'"
+            >第 {{ selectedRoutePlaces.findIndex(p => p.properties.id === feature.properties.id) + 1 }} 站</span>
+            <span>{{ feature.properties.category }}</span>
+          </button>
+          <button
             class="favorite-toggle"
             type="button"
             :aria-label="isFavorite(feature.properties.id) ? '取消收藏' : '收藏'"
             :title="isFavorite(feature.properties.id) ? '取消收藏' : '收藏'"
             @click.stop="toggleFavorite(feature)"
           >{{ isFavorite(feature.properties.id) ? '★' : '☆' }}</button>
-          <strong>{{ feature.properties.name }}</strong>
-          <span v-if="selectedRoutePlaces.some(p => p.properties.id === feature.properties.id)"
-            class="route-order-pill"
-            :title="'行程第 ' + (selectedRoutePlaces.findIndex(p => p.properties.id === feature.properties.id) + 1) + ' 站'"
-          >第 {{ selectedRoutePlaces.findIndex(p => p.properties.id === feature.properties.id) + 1 }} 站</span>
-          <div>{{ feature.properties.category }}</div>
         </div>
       </div>
       <div v-else-if="!loading && !searchMessage" class="explorer-empty">
@@ -1342,21 +1409,6 @@ onUnmounted(() => {
         结果来自后端 POI 数据库
       </div>
     </aside>
-
-    <main class="map-stage" aria-label="南京地图">
-      <div ref="mapContainer" class="map"></div>
-      <section v-if="basemapError" class="map-resource-error" role="alert">
-        <span>{{ basemapError }}</span>
-        <button type="button" @click="retryBasemap">重试底图</button>
-      </section>
-      <div v-if="selectedRoutePlaces.length >= 2" class="map-route-status" role="status">
-        <span class="map-status-dot" aria-hidden="true"></span>
-        {{ routeKind === 'valhalla'
-          ? '已验证的 Valhalla 道路线路'
-          : '直线串联预览 · 非实际导航路径' }}
-      </div>
-      <div class="map-attribution-note">地图 © OpenStreetMap · 空间结果以数据源为准</div>
-    </main>
 
     <aside
       v-show="showWorkspace"
@@ -1376,6 +1428,7 @@ onUnmounted(() => {
           :key="tab.id"
           type="button"
           role="tab"
+          :data-workspace-tab="tab.id"
           :aria-selected="activeWorkspaceTab === tab.id"
           :class="{ active: activeWorkspaceTab === tab.id }"
           @click="activeWorkspaceTab = tab.id"
@@ -1452,6 +1505,7 @@ onUnmounted(() => {
         </div>
       </div>
     </aside>
+    </MobileWorkspaceSheet>
   </div>
 </template>
 
@@ -1532,10 +1586,12 @@ body { overflow: hidden; font-family: Inter, 'Segoe UI', 'Microsoft YaHei', sans
 .result-count {padding:10px 16px;background:#f9fbfe;color:#53647f;font-size:12px;font-weight:600;
   position:sticky;top:0;z-index:2;border-bottom:1px solid #edf1f7;}
 .result-item {position:relative;padding:13px 42px 13px 16px;border-bottom:1px solid #f0f3f8;cursor:pointer;}
+ .result-open {display:grid;width:100%;gap:4px;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;}
+ .result-open:focus-visible {outline:2px solid #2563eb;outline-offset:2px;border-radius:5px;}
 .result-item:hover {background:#f2f7ff;}
 .result-item:last-child {border-bottom:0;}
-.result-item strong {display:block;color:#253a53;font-size:13px;line-height:1.4;}
-.result-item > div {margin-top:4px;font-size:12px;color:#8492a6;}
+ .result-item strong {display:block;color:#253a53;font-size:13px;line-height:1.4;}
+ .result-open > span:last-child {font-size:12px;color:#8492a6;}
 .result-item-selected {background:#eaf2ff;}
 .result-item-route-selected {border-left:3px solid #2563eb;padding-left:13px;}
 .route-order-pill {display:inline-flex;margin-top:6px;padding:2px 7px;border-radius:12px;
@@ -1665,5 +1721,175 @@ body { overflow: hidden; font-family: Inter, 'Segoe UI', 'Microsoft YaHei', sans
   .workspace-tabs{gap:3px;padding:7px 7px 9px}
   .workspace-tabs button{white-space:normal;line-height:1.35;min-height:36px}
   .map-route-status{left:8px;bottom:34px;max-width:calc(100% - 16px)}
+}
+
+/* Mobile presentation shell. Shared panels stay mounted so map and business state survive workspace changes. */
+.mobile-workspace-sheet { display:contents; }
+.mobile-sheet-toggle,.mobile-workspace-nav { display:none; }
+.mobile-sheet-content { display:contents; }
+
+@media(max-width:1020px){
+  :root {
+    --mobile-toolbar-height: 186px;
+    --mobile-sheet-peek: 194px;
+  }
+  html,body,#app { width:100%;height:100%;min-height:0;overflow:hidden; }
+  .map-wrapper,.map-wrapper.explorer-hidden,.map-wrapper.workspace-hidden {
+    position:relative;display:block;width:100%;height:100dvh;min-height:0;overflow:hidden;
+    padding-bottom:env(safe-area-inset-bottom);background:#e9f0f7;
+  }
+  .map-wrapper.mobile-sheet-expanded { --mobile-sheet-peek:min(72dvh,760px); }
+  .app-toolbar {
+    position:absolute;inset:0 0 auto;z-index:30;grid-column:auto;grid-row:auto;
+    padding-top:env(safe-area-inset-top);background:#fff;border-bottom:1px solid var(--tourism-border);
+  }
+  .toolbar-main {
+    display:grid;grid-template-columns:minmax(0,1fr);gap:8px;min-height:0;
+    padding:10px 12px 8px;
+  }
+  .brand-mark { min-width:0;min-height:36px; }
+  .brand-copy strong { font-size:15px; }
+  .brand-copy small { display:none; }
+  .panel-toggle { display:none; }
+  .toolbar-search { order:0;display:flex;width:100%;max-width:none;min-width:0;gap:8px; }
+  .search-box { height:46px;min-height:var(--tourism-touch-target);padding:10px 12px;border-radius:var(--tourism-radius-control);font-size:16px; }
+  .toolbar-button,.search-submit { min-height:var(--tourism-touch-target);padding:9px 12px;font-size:14px;border-radius:var(--tourism-radius-control); }
+  .toolbar-utilities { display:flex;align-items:center;gap:8px;min-width:0;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none; }
+  .toolbar-utilities::-webkit-scrollbar { display:none; }
+  .toolbar-spacer { display:none; }
+  .map-display-control { flex-shrink:0; }
+  .map-display-control button { min-width:54px;min-height:var(--tourism-touch-target);font-size:14px; }
+  .category-filter { min-height:44px;gap:8px;padding:0 12px 9px;overscroll-behavior-x:contain; }
+  .category-button { height:44px!important;min-height:44px!important;box-sizing:border-box;display:inline-flex;align-items:center;padding:8px 13px;font-size:14px; }
+  .map-stage { position:absolute;inset:0;z-index:0;grid-column:auto;grid-row:auto;min-width:0;min-height:0;overflow:hidden; }
+  .maplibregl-ctrl-group button { width:44px;height:44px; }
+  .map-resource-error { top:calc(var(--mobile-toolbar-height) + env(safe-area-inset-top) + 8px);max-width:calc(100% - 24px);font-size:14px; }
+  .map-resource-error button { min-height:var(--tourism-touch-target);padding:8px 12px; }
+  .map-route-status { left:10px;bottom:calc(var(--mobile-sheet-peek) + 36px + env(safe-area-inset-bottom));max-width:min(78%,340px);font-size:12px; }
+  .map-attribution-note { left:8px;bottom:calc(var(--mobile-sheet-peek) + 4px + env(safe-area-inset-bottom));font-size:11px; }
+  .maplibregl-ctrl-top-right { top:calc(var(--mobile-toolbar-height) + env(safe-area-inset-top) + 8px)!important;right:8px!important; }
+  .maplibregl-ctrl-bottom-right { bottom:calc(var(--mobile-sheet-peek) + env(safe-area-inset-bottom) + 4px)!important; }
+  .maplibregl-ctrl-bottom-left { bottom:calc(var(--mobile-sheet-peek) + env(safe-area-inset-bottom) + 4px)!important; }
+
+  .mobile-workspace-sheet {
+    position:fixed;inset:auto 0 0;z-index:25;display:flex;flex-direction:column;
+    width:100%;height:var(--mobile-sheet-peek);max-height:calc(100dvh - var(--mobile-toolbar-height) - env(safe-area-inset-top) - 8px);
+    padding-bottom:env(safe-area-inset-bottom);overflow:hidden;box-sizing:border-box;
+    border:1px solid #dbe4ef;border-bottom:0;border-radius:18px 18px 0 0;
+    background:var(--tourism-surface);box-shadow:0 -8px 30px rgb(21 43 72 / 16%);
+    transition:height .2s ease;isolation:isolate;
+  }
+  .mobile-workspace-sheet.is-expanded {
+    height:min(56dvh,760px,calc(100dvh - var(--mobile-toolbar-height) - env(safe-area-inset-top) - 120px));
+  }
+  .mobile-sheet-toggle {
+    display:flex;align-items:center;gap:12px;flex:0 0 58px;width:100%;min-height:58px;
+    padding:5px 18px 4px;border:0;background:#fff;color:var(--tourism-ink);text-align:left;cursor:pointer;
+  }
+  .mobile-sheet-grabber { position:absolute;top:7px;left:50%;width:36px;height:4px;border-radius:999px;transform:translateX(-50%);background:#c4cfdd; }
+  .mobile-sheet-summary { display:flex;align-items:baseline;gap:9px;min-width:0;padding-top:7px; }
+  .mobile-sheet-summary strong { font-size:15px;line-height:1.3; }
+  .mobile-sheet-summary small { overflow:hidden;color:var(--tourism-muted);font-size:13px;text-overflow:ellipsis;white-space:nowrap; }
+  .mobile-sheet-chevron { margin-left:auto;color:#45617f;font-size:22px;line-height:1; }
+  .mobile-sheet-content { display:flex;flex:1 1 auto;flex-direction:column;min-height:0;overflow:hidden; }
+  .mobile-workspace-nav { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));flex:0 0 auto;gap:4px;padding:7px 8px calc(7px + env(safe-area-inset-bottom));border-top:1px solid #e7edf5;background:#fff; }
+  .mobile-workspace-nav button { position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:0;min-height:52px;padding:3px;border:0;border-radius:11px;background:transparent;color:#566a82;font-family:inherit;font-size:12px;font-weight:600;line-height:1.25;cursor:pointer; }
+  .mobile-workspace-nav button.active { background:var(--tourism-blue-soft);color:var(--tourism-blue-strong); }
+  .mobile-nav-icon { font-size:20px;font-weight:700;line-height:1.1; }
+  .mobile-route-badge { position:absolute;top:1px;right:calc(50% - 25px);display:grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:99px;background:var(--tourism-blue);color:#fff;font-size:11px; }
+
+  .mobile-workspace-sheet #explorer-panel,.mobile-workspace-sheet #workspace-panel { display:none;min-width:0;width:100%;max-width:none;min-height:0;max-height:none;margin:0;border:0;border-radius:0;background:#fff;box-shadow:none; }
+  .mobile-workspace-sheet[data-active="explore"]:not(.has-place-detail) #explorer-panel { display:flex;flex:1;flex-direction:column; }
+  .mobile-workspace-sheet[data-active="explore"].has-place-detail #workspace-panel,
+  .mobile-workspace-sheet[data-active="route"] #workspace-panel,
+  .mobile-workspace-sheet[data-active="ai"] #workspace-panel,
+  .mobile-workspace-sheet[data-active="more"] #workspace-panel { display:flex;flex:1;flex-direction:column; }
+  .mobile-workspace-sheet #explorer-panel .explorer-heading { flex:none;padding:7px 16px;border:0;background:#fff; }
+  .mobile-workspace-sheet #explorer-panel .explorer-heading h2 { font-size:16px; }
+  .mobile-workspace-sheet #explorer-panel .explorer-heading span:not(.result-pill) { font-size:13px; }
+  .mobile-workspace-sheet #explorer-panel .search-message { margin:5px 14px;padding:8px 10px;font-size:14px; }
+  .mobile-workspace-sheet #explorer-panel .result-list { flex:1;min-height:0;max-height:none;margin:0 12px 4px;overflow:auto;overscroll-behavior:contain; }
+  .mobile-workspace-sheet #explorer-panel .result-count { position:static;z-index:auto;padding:8px 4px;background:#fff;font-size:13px; }
+  .mobile-workspace-sheet #explorer-panel .result-item { position:relative;min-height:var(--tourism-touch-target);padding:0 48px 0 0;border-radius:12px;font-size:14px; }
+  .mobile-workspace-sheet #explorer-panel .result-open { min-height:var(--tourism-touch-target);gap:4px;padding:10px 0 10px 12px; }
+  .mobile-workspace-sheet #explorer-panel .result-open > strong { font-size:15px; }
+  .mobile-workspace-sheet #explorer-panel .favorite-toggle { width:44px;height:44px;right:4px;top:50%;transform:translateY(-50%); }
+  .mobile-workspace-sheet .place-detail-close { width:44px;height:44px; }
+  .mobile-workspace-sheet .place-detail-actions button { min-height:44px; }
+  .mobile-workspace-sheet #explorer-panel .explorer-empty { padding:12px 16px;font-size:14px; }
+  .mobile-workspace-sheet #explorer-panel .explorer-footnote { flex:none;padding:6px 14px;font-size:12px; }
+
+  .mobile-workspace-sheet #workspace-panel { overflow:hidden;border:0; }
+  .mobile-workspace-sheet #workspace-panel .workspace-heading { display:none; }
+  .mobile-workspace-sheet #workspace-panel .workspace-tabs { display:none; }
+  .mobile-workspace-sheet[data-active="more"] #workspace-panel .workspace-tabs { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;padding:7px 8px;border:0;border-bottom:1px solid #e6edf5; }
+  .mobile-workspace-sheet[data-active="more"] #workspace-panel .workspace-tabs [data-workspace-tab="ai"],
+  .mobile-workspace-sheet[data-active="more"] #workspace-panel .workspace-tabs [data-workspace-tab="route"],
+  .mobile-workspace-sheet[data-active="more"] #workspace-panel .workspace-tabs [data-workspace-tab="detail"] { display:none; }
+  .mobile-workspace-sheet #workspace-panel .workspace-tabs button { min-height:44px;padding:8px 4px;font-size:13px;white-space:normal; }
+  .mobile-workspace-sheet #workspace-panel .workspace-content { flex:1;min-height:0;max-height:none;padding:2px 14px calc(12px + env(safe-area-inset-bottom));overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch; }
+  .mobile-workspace-sheet #workspace-panel .workspace-slot { padding:4px 0 10px; }
+  .mobile-workspace-sheet #workspace-panel .workspace-slot > .ai-itinerary-panel,
+  .mobile-workspace-sheet #workspace-panel .workspace-slot > .route-panel,
+  .mobile-workspace-sheet #workspace-panel .workspace-slot > .theme-panel,
+  .mobile-workspace-sheet #workspace-panel .workspace-slot > .cultural-line-panel,
+  .mobile-workspace-sheet #workspace-panel .workspace-slot > .statistics-panel,
+  .mobile-workspace-sheet #workspace-panel .workspace-slot > .place-detail-panel,
+  .mobile-workspace-sheet #workspace-panel .workspace-slot > .spatial-analysis-panel { font-size:15px; }
+  .mobile-workspace-sheet #workspace-panel .workspace-slot > .route-panel { padding:4px 0 12px; }
+  .mobile-workspace-sheet #workspace-panel .route-places { max-height:180px;overflow:auto; }
+  .mobile-workspace-sheet #workspace-panel .route-stop-focus,
+  .mobile-workspace-sheet #workspace-panel .route-road-controls button,
+  .mobile-workspace-sheet #workspace-panel .route-export-actions button { min-height:var(--tourism-touch-target); }
+  .mobile-workspace-sheet #workspace-panel .route-road-controls label { min-height:40px;font-size:14px; }
+  .mobile-workspace-sheet #workspace-panel .route-road-controls select { min-height:var(--tourism-touch-target);font-size:15px; }
+  .mobile-workspace-sheet #workspace-panel .route-road-controls input[type="checkbox"] { width:20px;height:20px; }
+  .mobile-workspace-sheet #workspace-panel .route-road-controls small,
+  .mobile-workspace-sheet #workspace-panel .route-time,
+  .mobile-workspace-sheet #workspace-panel .route-distance { font-size:14px;line-height:1.5; }
+  .mobile-workspace-sheet #workspace-panel .ai-itinerary-panel { max-height:none; }
+  .mobile-workspace-sheet #workspace-panel .ai-content { max-height:none;overflow:visible; }
+
+  .map-wrapper button:focus-visible,.map-wrapper input:focus-visible,.map-wrapper select:focus-visible,
+  .mobile-workspace-sheet button:focus-visible { outline:3px solid #1557b0;outline-offset:2px; }
+  .mobile-workspace-sheet button:active,.toolbar-utilities button:active,.category-button:active { filter:brightness(.95); }
+  .mobile-workspace-sheet button:disabled,.toolbar-utilities button:disabled { cursor:not-allowed;opacity:.55; }
+}
+
+@media(max-width:600px){
+  :root { --mobile-toolbar-height:202px;--mobile-sheet-peek:194px; }
+  .toolbar-main { padding:9px 10px 7px;gap:7px; }
+  .category-filter { padding:0 10px 8px; }
+  .maplibregl-ctrl-top-right { right:6px!important; }
+}
+
+@media(max-width:390px){
+  :root { --mobile-toolbar-height:198px;--mobile-sheet-peek:188px; }
+  .toolbar-button { padding-inline:10px; }
+  .mobile-sheet-summary { gap:6px; }
+  .mobile-workspace-nav { padding-inline:5px; }
+}
+
+@media(max-width:1020px) and (orientation:landscape){
+  :root { --mobile-toolbar-height:150px;--mobile-sheet-peek:150px; }
+  .toolbar-main { grid-template-columns:auto minmax(220px,1fr);gap:7px 12px;padding:6px 12px; }
+  .brand-mark { grid-column:1;grid-row:1; }
+  .toolbar-search { grid-column:2;grid-row:1; }
+  .toolbar-utilities { grid-column:1 / -1;grid-row:2; }
+  .category-filter { min-height:44px;padding:0 12px 5px; }
+  .mobile-workspace-sheet { inset:calc(var(--mobile-toolbar-height) + env(safe-area-inset-top)) auto 0 0;width:min(420px,48vw);height:auto;max-height:none;border-radius:0 16px 0 0; }
+  .mobile-workspace-sheet.is-expanded { height:auto; }
+  .mobile-sheet-toggle { flex-basis:48px;min-height:48px; }
+  .mobile-workspace-nav { grid-template-columns:repeat(4,minmax(0,1fr)); }
+  .maplibregl-ctrl-top-right { top:calc(var(--mobile-toolbar-height) + env(safe-area-inset-top) + 8px)!important; }
+  .maplibregl-ctrl-bottom-left { bottom:6px!important; }
+  .maplibregl-ctrl-bottom-right { right:6px!important;bottom:6px!important; }
+  .map-attribution-note { bottom:6px; }
+  .map-route-status { bottom:38px; }
+}
+
+@media(prefers-reduced-motion:reduce){
+  .mobile-workspace-sheet { transition:none; }
+  .mobile-workspace-nav button,.mobile-sheet-toggle { scroll-behavior:auto; }
 }
 </style>

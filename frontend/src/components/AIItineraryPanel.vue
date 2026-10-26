@@ -1,10 +1,9 @@
 <script setup>
 import { reactive, ref } from 'vue'
-import axios from 'axios'
+import { api } from '../services/api'
 
 const emit = defineEmits(['apply'])
 const storageKey = 'smart-tourism-saved-itineraries-v1'
-const apiRoot = 'http://127.0.0.1:8010/api/ai/itinerary'
 const request = reactive({
   location: '南京历史文化', days: 1, style: '历史文化',
   people: '普通游客', walking_limit: '中等', max_stops: 4,
@@ -21,7 +20,7 @@ async function loadExclusionChoices() {
   exclusionLoading.value = true
   exclusionError.value = ''
   try {
-    const response = await axios.get('http://127.0.0.1:8010/api/places', { timeout: 10000 })
+    const response = await api.get('/api/places', { timeout: 10000 })
     const features = response.data?.features
     if (!Array.isArray(features)) throw new Error('invalid POI payload')
     exclusionChoices.value = features.filter(f => Number.isSafeInteger(f?.properties?.id) &&
@@ -124,7 +123,7 @@ async function generate(onlyPreview = false) {
       payload.walking_limit = '低'
       payload.max_stops = Math.max(2, Math.min(6, ids(result.value).length - 1))
     }
-    const response = await axios.post(apiRoot + '/generate', payload, { timeout: 30000 })
+    const response = await api.post('/api/ai/itinerary/generate', payload, { timeout: 30000 })
     if (seq !== requestSeq) return
     if (onlyPreview) {
       preview.value = response.data
@@ -147,7 +146,7 @@ async function requestEditPreview() {
   preview.value = null
   const seq = ++requestSeq
   try {
-    const response = await axios.post(apiRoot + '/edit-preview', {
+    const response = await api.post('/api/ai/itinerary/edit-preview', {
       place_ids: ids(result.value),
       instruction: editInstruction.value.trim(),
       travel_mode: result.value.mode || 'pedestrian'
@@ -196,7 +195,7 @@ async function restore(item) {
   error.value = ''
   const seq = ++requestSeq
   try {
-    const response = await axios.post(apiRoot + '/restore', {
+    const response = await api.post('/api/ai/itinerary/restore', {
       place_ids: item.place_ids, travel_mode: item.mode
     }, { timeout: 30000 })
     if (seq !== requestSeq) return
