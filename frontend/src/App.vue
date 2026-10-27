@@ -19,6 +19,8 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 
 setWorkerUrl(workerUrl)
 const mapContainer = ref(null)
+const toolbarElement = ref(null)
+const mobileToolbarHeight = ref(186)
 const searchQuery = ref('')
 const searchMessage = ref('')
 const searchResults = ref([])
@@ -114,6 +116,7 @@ const categories = [
 
 
 let map = null
+let toolbarResizeObserver = null
 let searchPopup = null
 let gridPopup = null
 
@@ -932,6 +935,14 @@ const retryBasemap = () => {
 }
 
 onMounted(() => {
+  if (toolbarElement.value && typeof ResizeObserver !== 'undefined') {
+    toolbarResizeObserver = new ResizeObserver(([entry]) => {
+      mobileToolbarHeight.value = Math.ceil(entry.target.getBoundingClientRect().height)
+    })
+    toolbarResizeObserver.observe(toolbarElement.value)
+    mobileToolbarHeight.value = Math.ceil(toolbarElement.value.getBoundingClientRect().height)
+  }
+
   map = new Map({
     container: mapContainer.value,
     style: {
@@ -1202,6 +1213,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  toolbarResizeObserver?.disconnect()
+  toolbarResizeObserver = null
   mapReady.value = false
   requestController?.abort()
   clearPopup()
@@ -1215,6 +1228,7 @@ onUnmounted(() => {
 <template>
   <div
     class="map-wrapper"
+    :style="{ '--mobile-toolbar-height': `${mobileToolbarHeight}px` }"
     :class="{
       'explorer-hidden': !showExplorer,
       'workspace-hidden': !showWorkspace,
@@ -1225,7 +1239,7 @@ onUnmounted(() => {
       'mobile-workspace-more': mobileWorkspace === 'more'
     }"
   >
-    <header class="app-toolbar" aria-label="智慧文旅地图工具栏">
+    <header ref="toolbarElement" class="app-toolbar" aria-label="智慧文旅地图工具栏">
       <div class="toolbar-main">
         <div class="brand-mark">
           <span class="brand-icon" aria-hidden="true">◎</span>
@@ -1608,9 +1622,9 @@ body { overflow: hidden; font-family: Inter, 'Segoe UI', 'Microsoft YaHei', sans
 .map-resource-error {position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:7;
   display:flex;align-items:center;gap:12px;max-width:calc(100% - 32px);padding:10px 12px;
   border:1px solid #f2c879;border-radius:9px;background:#fff8e8;color:#754c08;
-  box-shadow:0 2px 10px #0002;font-size:12px;}
+  box-shadow:0 2px 10px #0002;font-size:12px;pointer-events:none;}
 .map-resource-error button {flex-shrink:0;border:1px solid #d6a94c;border-radius:6px;padding:5px 9px;
-  background:#fff;color:#684506;font:inherit;font-weight:700;cursor:pointer;}
+  background:#fff;color:#684506;font:inherit;font-weight:700;cursor:pointer;pointer-events:auto;}
 .map-route-status {position:absolute;left:18px;bottom:37px;z-index:5;display:flex;align-items:center;gap:8px;
   max-width:calc(100% - 36px);font-size:11px;background:#ffffffed;border:1px solid #d9e1ec;border-radius:9px;
   padding:8px 12px;box-shadow:0 2px 10px #0002;color:#31445e;pointer-events:none;}
@@ -1764,24 +1778,25 @@ body { overflow: hidden; font-family: Inter, 'Segoe UI', 'Microsoft YaHei', sans
   .category-button { height:44px!important;min-height:44px!important;box-sizing:border-box;display:inline-flex;align-items:center;padding:8px 13px;font-size:14px; }
   .map-stage { position:absolute;inset:0;z-index:0;grid-column:auto;grid-row:auto;min-width:0;min-height:0;overflow:hidden; }
   .maplibregl-ctrl-group button { width:44px;height:44px; }
-  .map-resource-error { top:calc(var(--mobile-toolbar-height) + env(safe-area-inset-top) + 8px);max-width:calc(100% - 24px);font-size:14px; }
+  .map-resource-error { top:calc(var(--mobile-toolbar-height) + 8px);left:12px;right:12px;width:auto;max-width:none;transform:none;justify-content:space-between;gap:8px;padding:8px 10px;font-size:13px; }
+  .map-resource-error span { flex:1;min-width:0; }
   .map-resource-error button { min-height:var(--tourism-touch-target);padding:8px 12px; }
   .map-route-status { left:10px;bottom:calc(var(--mobile-sheet-peek) + 36px + env(safe-area-inset-bottom));max-width:min(78%,340px);font-size:12px; }
   .map-attribution-note { left:8px;bottom:calc(var(--mobile-sheet-peek) + 4px + env(safe-area-inset-bottom));font-size:11px; }
-  .maplibregl-ctrl-top-right { top:calc(var(--mobile-toolbar-height) + env(safe-area-inset-top) + 8px)!important;right:8px!important; }
+  .maplibregl-ctrl-top-right { top:calc(var(--mobile-toolbar-height) + 8px)!important;right:8px!important; }
   .maplibregl-ctrl-bottom-right { bottom:calc(var(--mobile-sheet-peek) + env(safe-area-inset-bottom) + 4px)!important; }
   .maplibregl-ctrl-bottom-left { bottom:calc(var(--mobile-sheet-peek) + env(safe-area-inset-bottom) + 4px)!important; }
 
   .mobile-workspace-sheet {
     position:fixed;inset:auto 0 0;z-index:25;display:flex;flex-direction:column;
-    width:100%;height:var(--mobile-sheet-peek);max-height:calc(100dvh - var(--mobile-toolbar-height) - env(safe-area-inset-top) - 8px);
+    width:100%;height:var(--mobile-sheet-peek);max-height:calc(100dvh - var(--mobile-toolbar-height) - 8px);
     padding-bottom:env(safe-area-inset-bottom);overflow:hidden;box-sizing:border-box;
     border:1px solid #dbe4ef;border-bottom:0;border-radius:18px 18px 0 0;
     background:var(--tourism-surface);box-shadow:0 -8px 30px rgb(21 43 72 / 16%);
     transition:height .2s ease;isolation:isolate;
   }
   .mobile-workspace-sheet.is-expanded {
-    height:min(56dvh,760px,calc(100dvh - var(--mobile-toolbar-height) - env(safe-area-inset-top) - 120px));
+    height:min(56dvh,760px,calc(100dvh - var(--mobile-toolbar-height) - 96px));
   }
   .mobile-sheet-toggle {
     display:flex;align-items:center;gap:12px;flex:0 0 58px;width:100%;min-height:58px;
@@ -1878,11 +1893,11 @@ body { overflow: hidden; font-family: Inter, 'Segoe UI', 'Microsoft YaHei', sans
   .toolbar-search { grid-column:2;grid-row:1; }
   .toolbar-utilities { grid-column:1 / -1;grid-row:2; }
   .category-filter { min-height:44px;padding:0 12px 5px; }
-  .mobile-workspace-sheet { inset:calc(var(--mobile-toolbar-height) + env(safe-area-inset-top)) auto 0 0;width:min(420px,48vw);height:auto;max-height:none;border-radius:0 16px 0 0; }
+  .mobile-workspace-sheet { inset:calc(var(--mobile-toolbar-height) + 8px) auto 0 0;width:min(420px,48vw);height:auto;max-height:none;border-radius:0 16px 0 0; }
   .mobile-workspace-sheet.is-expanded { height:auto; }
   .mobile-sheet-toggle { flex-basis:48px;min-height:48px; }
   .mobile-workspace-nav { grid-template-columns:repeat(4,minmax(0,1fr)); }
-  .maplibregl-ctrl-top-right { top:calc(var(--mobile-toolbar-height) + env(safe-area-inset-top) + 8px)!important; }
+  .maplibregl-ctrl-top-right { top:calc(var(--mobile-toolbar-height) + 8px)!important; }
   .maplibregl-ctrl-bottom-left { bottom:6px!important; }
   .maplibregl-ctrl-bottom-right { right:6px!important;bottom:6px!important; }
   .map-attribution-note { bottom:6px; }
