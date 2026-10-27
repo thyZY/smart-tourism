@@ -10,6 +10,9 @@ export default defineConfig({
   // PWA lifecycle tests require the production preview origin and service worker;
   // they run through playwright.pwa.config.mjs rather than the Vite dev server.
   testIgnore: ['pwa-lifecycle.spec.mjs'],
+  // Public OSM availability is checked once on demand via the live-map config.
+  // The regular desktop/mobile suite uses a local tile fixture for deterministic recovery.
+  grepInvert: /@live-map/,
   timeout: 30000,
   retries: 1,
   outputDir: `${reportRoot}/artifacts`,

@@ -12,6 +12,10 @@ for (const viewport of viewports) {
     const pageErrors = []
     page.on('pageerror', error => pageErrors.push(error.message))
     await page.setViewportSize({ width: viewport.width, height: viewport.height })
+    // This case verifies real same-origin POI data and responsive interactions;
+    // public OSM/glyph availability has a separate, explicitly live integration gate.
+    await page.route('https://tile.openstreetmap.org/**', route => route.abort())
+    await page.route('https://demotiles.maplibre.org/**', route => route.abort())
     await page.goto('/')
     await expect(page.locator('.map canvas')).toBeVisible({ timeout: 20000 })
 

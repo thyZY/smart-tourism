@@ -3,13 +3,43 @@ on:
   push:
     branches:
       - 'feat/pwa-*'
+      - 'fix/pwa-ci-*'
   pull_request:
   workflow_dispatch:
+    inputs:
+      live_map_resources:
+        description: Run the one-shot public OSM/glyph integration checks
+        required: true
+        default: false
+        type: boolean
 
 jobs:
   chromium-browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    services:
+      postgis:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: smart_tourism_e2e
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d smart_tourism_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: '5432'
+      DB_NAME: smart_tourism_e2e
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      E2E_DATABASE_FIXTURE: '1'
+      DEEPSEEK_API_KEY: ''
+      VALHALLA_URL: https://fixture-disabled.invalid
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,6 +62,8 @@ jobs:
         id: chromium
         working-directory: frontend
         run: npx playwright install --with-deps chromium
+      - name: Initialize isolated PostGIS database from schema and CSV
+        run: python backend/e2e_initialize_database.py
       - name: Start isolated real FastAPI backend
         run: |
           set -e
@@ -42,9 +74,42 @@ jobs:
           done
           cat /tmp/smart-tourism-backend.log
           exit 1
+      - name: Validate health, POI GeoJSON, and statistics endpoints
+        run: |
+          python - <<'PY'
+          import json
+          from urllib.request import urlopen
+
+          def get_json(path):
+              with urlopen(f'http://127.0.0.1:8010{path}', timeout=5) as response:
+                  assert response.status == 200, f'{path}: HTTP {response.status}'
+                  return json.load(response)
+
+          health = get_json('/api/health')
+          assert health.get('status') == 'ok', health
+
+          places = get_json('/api/places')
+          features = places.get('features')
+          assert places.get('type') == 'FeatureCollection' and len(features) == 40
+          ids = [feature['properties']['id'] for feature in features]
+          assert len(set(ids)) == 40
+          for feature in features:
+              assert feature['geometry']['type'] == 'Point'
+              lng, lat = feature['geometry']['coordinates']
+              assert -180 <= lng <= 180 and -90 <= lat <= 90
+
+          statistics = get_json('/api/statistics')
+          assert statistics.get('total_places') == 40, statistics
+          assert sum(statistics.get('category_counts', {}).values()) == 40, statistics
+          print('API fixture ready: health=ok, places=40 unique valid Points, statistics=40.')
+          PY
       - name: Run regular Chromium browser regression
         working-directory: frontend
         run: npm run test:e2e
+      - name: Run one-shot live OSM and glyph integration checks
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.live_map_resources }}
+        working-directory: frontend
+        run: npm run test:e2e:live-map
       - name: Run production PWA lifecycle regression
         if: ${{ always() && steps.frontend-deps.outcome == 'success' && steps.chromium.outcome == 'success' }}
         working-directory: frontend

@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test:e2e": "playwright test --config=playwright.config.mjs",
+    "test:e2e:live-map": "playwright test --config=playwright.live-map.config.mjs",
     "test:pwa": "npm run build && playwright test --config=playwright.pwa.config.mjs"
   },
   "dependencies": {

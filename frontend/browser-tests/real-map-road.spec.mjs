@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 
 const trackedHosts = /tile\.openstreetmap\.org|demotiles\.maplibre\.org/
 
-test('real POIs, OSM basemap, and optimized Valhalla road render in MapLibre', async ({ page }, testInfo) => {
+test('live OSM basemap with the isolated route contract fixture renders in MapLibre @live-map', async ({ page }, testInfo) => {
   test.setTimeout(120000)
   const resourceResponses = []
   const resourceFailures = []
@@ -77,6 +77,7 @@ test('real POIs, OSM basemap, and optimized Valhalla road render in MapLibre', a
   const initialRoad = await initialRoadResponse.json()
   expect(initialRoad.status).toBe('verified_by_routing_service')
   expect(initialRoad.provider).toBe('Valhalla')
+  expect(initialRoad.geojson.features[0].properties.source).toBe('CI Valhalla contract fixture')
   expect(initialRoad.optimized).toBe(false)
 
   await page.getByLabel('使用时间矩阵优化顺序（固定首站）').check()
@@ -91,6 +92,7 @@ test('real POIs, OSM basemap, and optimized Valhalla road render in MapLibre', a
   const road = await roadResponse.json()
   expect(road.status).toBe('verified_by_routing_service')
   expect(road.provider).toBe('Valhalla')
+  expect(road.geojson.features[0].properties.source).toBe('CI Valhalla contract fixture')
   expect(road.mode).toBe('auto')
   expect(road.optimized).toBe(true)
   expect(road.ordered_place_ids).toEqual([1, 2, 4, 3])
@@ -210,10 +212,21 @@ test('real POIs, OSM basemap, and optimized Valhalla road render in MapLibre', a
   }))
 })
 
-test('real database POIs and Valhalla road update the MapLibre route source without tile gating', async ({ page }, testInfo) => {
+test('real database POIs and isolated route contract update the MapLibre route source without tile gating', async ({ page }, testInfo) => {
   test.setTimeout(90000)
   const pageErrors = []
   page.on('pageerror', error => pageErrors.push(error.message))
+  // This case verifies the real MapLibre route-source pipeline. External OSM
+  // availability is tested separately by the @live-map integration cases.
+  const testTile = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/Ff8AAAAASUVORK5CYII=',
+    'base64'
+  )
+  await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({
+    status: 200,
+    contentType: 'image/png',
+    body: testTile
+  }))
 
   await page.goto('/', { waitUntil: 'domcontentloaded' })
   await expect(page.locator('.map canvas')).toBeVisible()
@@ -267,6 +280,7 @@ test('real database POIs and Valhalla road update the MapLibre route source with
   const road = await roadResponse.json()
   expect(road.status).toBe('verified_by_routing_service')
   expect(road.provider).toBe('Valhalla')
+  expect(road.geojson.features[0].properties.source).toBe('CI Valhalla contract fixture')
   expect(road.optimized).toBe(true)
   expect(road.geojson.type).toBe('FeatureCollection')
   expect(road.geojson.features[0].geometry.type).toBe('LineString')
@@ -299,7 +313,7 @@ test('real database POIs and Valhalla road update the MapLibre route source with
   expect(pageErrors).toEqual([])
 
   await page.screenshot({ path: testInfo.outputPath('real-valhalla-route-source.png'), fullPage: false })
-  console.log('REAL_VALHALLA_SOURCE', JSON.stringify({
+  console.log('CI_ROUTE_FIXTURE_SOURCE', JSON.stringify({
     status: road.status,
     provider: road.provider,
     orderedPlaceIds: road.ordered_place_ids,

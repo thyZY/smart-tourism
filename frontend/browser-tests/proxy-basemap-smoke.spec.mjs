@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-test('configured browser proxy loads real OSM basemap tiles', async ({ page }) => {
+test('configured browser proxy loads real OSM basemap tiles @live-map', async ({ page }) => {
   test.setTimeout(45000)
   const tileResponses = []
   const tileFailures = []
