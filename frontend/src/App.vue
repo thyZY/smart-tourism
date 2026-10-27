@@ -1796,7 +1796,7 @@ body { overflow: hidden; font-family: Inter, 'Segoe UI', 'Microsoft YaHei', sans
     transition:height .2s ease;isolation:isolate;
   }
   .mobile-workspace-sheet.is-expanded {
-    height:min(56dvh,760px,calc(100dvh - var(--mobile-toolbar-height) - 116px));
+    height:min(56dvh,760px,calc(100dvh - var(--mobile-toolbar-height) - 96px));
   }
   .mobile-sheet-toggle {
     display:flex;align-items:center;gap:12px;flex:0 0 58px;width:100%;min-height:58px;
