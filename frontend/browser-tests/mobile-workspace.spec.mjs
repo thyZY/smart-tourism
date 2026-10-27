@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { writeFile } from 'node:fs/promises'
 
 const viewports = [
   { name: 'phone-390x844', width: 390, height: 844 },
@@ -167,4 +168,114 @@ test('workspace, selection, and scroll behavior stay usable across responsive vi
       fullPage: true
     })
   }
+})
+
+test('expanded workspace keeps usable content in landscape and keyboard-sized viewports', async ({ page }, testInfo) => {
+  test.setTimeout(30000)
+  const pageErrors = []
+  page.on('pageerror', error => pageErrors.push(error.message))
+
+  for (const viewport of [
+    { name: 'landscape', width: 844, height: 390 },
+    // A short visual viewport approximates the space remaining while an on-screen
+    // keyboard is open; actual Android IME behavior still needs device validation.
+    { name: 'keyboard-sized', width: 390, height: 480 }
+  ]) {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height })
+    await page.goto('/full-app-e2e.html', { waitUntil: 'domcontentloaded' })
+    await expect(page.locator('.map canvas')).toBeVisible({ timeout: 20000 })
+
+    const mobileNav = page.getByRole('tablist', { name: '主要工作区' })
+    await expect(mobileNav).toBeVisible()
+    await mobileNav.getByRole('tab', { name: 'AI 行程' }).click()
+    await expect(page.locator('.mobile-workspace-sheet')).toHaveClass(/is-expanded/)
+
+    const metrics = await page.evaluate(() => {
+      const box = selector => {
+        const rect = document.querySelector(selector).getBoundingClientRect()
+        return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, height: rect.height }
+      }
+      return {
+        viewport: { width: innerWidth, height: innerHeight },
+        sheet: box('.mobile-workspace-sheet'),
+        toolbar: box('.app-toolbar'),
+        measuredToolbarHeight: Number.parseFloat(getComputedStyle(document.querySelector('.map-wrapper')).getPropertyValue('--mobile-toolbar-height')),
+        toggle: box('.mobile-sheet-toggle'),
+        content: box('.mobile-sheet-content'),
+        nav: box('.mobile-workspace-nav'),
+        mapHit: (() => {
+          const landscape = innerWidth > innerHeight
+          const sheet = document.querySelector('.mobile-workspace-sheet').getBoundingClientRect()
+          const toolbar = document.querySelector('.app-toolbar').getBoundingClientRect()
+          const error = document.querySelector('.map-resource-error')?.getBoundingClientRect()
+          const unobstructedTop = Math.max(toolbar.bottom, error?.bottom || toolbar.bottom) + 12
+          const x = landscape ? (sheet.right + innerWidth) / 2 : innerWidth / 2
+          const y = landscape ? (unobstructedTop + innerHeight) / 2 : (unobstructedTop + sheet.top) / 2
+          const hit = document.elementFromPoint(x, y)
+          return {
+            x,
+            y,
+            target: hit ? `${hit.tagName.toLowerCase()}.${String(hit.className?.baseVal || hit.className || '').trim().replace(/\s+/g, '.')}` : null,
+            insideMap: Boolean(hit?.closest('.maplibregl-map')),
+            blockedByWorkspace: Boolean(hit?.closest('.app-toolbar, .mobile-workspace-sheet'))
+          }
+        })(),
+        basemapRetryHit: (() => {
+          const button = document.querySelector('.map-resource-error button')
+          if (!button) return null
+          const rect = button.getBoundingClientRect()
+          const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
+          return hit === button || button.contains(hit)
+        })(),
+        scroll: (() => {
+          const element = document.querySelector('.workspace-content')
+          return { clientHeight: element.clientHeight, scrollHeight: element.scrollHeight, overflowY: getComputedStyle(element).overflowY }
+        })(),
+        visualViewport: { width: visualViewport?.width, height: visualViewport?.height }
+      }
+    })
+
+    await testInfo.attach(`mobile-workspace-${viewport.name}-geometry.json`, {
+      body: JSON.stringify(metrics, null, 2),
+      contentType: 'application/json'
+    })
+    expect(metrics.sheet.height).toBeGreaterThanOrEqual(metrics.toggle.height + metrics.nav.height + 48)
+    expect(metrics.content.height).toBeGreaterThanOrEqual(48)
+    expect(metrics.sheet.top).toBeGreaterThanOrEqual(metrics.toolbar.bottom)
+    expect(metrics.measuredToolbarHeight).toBeGreaterThanOrEqual(metrics.toolbar.height - 1)
+    if (viewport.width > viewport.height) {
+      expect(viewport.width - metrics.sheet.right).toBeGreaterThanOrEqual(120)
+      expect(viewport.height - metrics.toolbar.bottom).toBeGreaterThanOrEqual(80)
+    } else {
+      expect(metrics.sheet.top - metrics.toolbar.bottom).toBeGreaterThanOrEqual(64)
+    }
+    expect(metrics.mapHit.insideMap && !metrics.mapHit.blockedByWorkspace, JSON.stringify(metrics.mapHit)).toBe(true)
+    if (metrics.basemapRetryHit !== null) expect(metrics.basemapRetryHit).toBe(true)
+    await expect(page.getByRole('button', { name: '生成并加载到地图' })).toBeVisible()
+    const generateAction = page.getByRole('button', { name: '生成并加载到地图' })
+    await generateAction.scrollIntoViewIfNeeded()
+    const actionHit = await generateAction.evaluate(element => {
+      const rect = element.getBoundingClientRect()
+      const x = rect.left + Math.min(rect.width / 2, 24)
+      const y = rect.top + rect.height / 2
+      const hit = document.elementFromPoint(x, y)
+      return {
+        withinViewport: rect.top >= 0 && rect.bottom <= innerHeight,
+        reachesTarget: hit === element || element.contains(hit),
+        rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
+      }
+    })
+    await testInfo.attach(`mobile-workspace-${viewport.name}-action-hit.json`, {
+      body: JSON.stringify(actionHit, null, 2),
+      contentType: 'application/json'
+    })
+    expect(actionHit.withinViewport && actionHit.reachesTarget, JSON.stringify(actionHit)).toBe(true)
+    await expect(mobileNav.getByRole('tab', { name: 'AI 行程' })).toBeVisible()
+    const screenshot = await page.screenshot()
+    const screenshotName = `mobile-workspace-${viewport.name}-expanded.png`
+    await writeFile(testInfo.outputPath(screenshotName), screenshot)
+    await testInfo.attach(screenshotName, { body: screenshot, contentType: 'image/png' })
+  }
+
+  expect(pageErrors).toEqual([])
 })
